@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* Light Theme (Default) */
+:root {
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --bg-gradient-from: #f9fafb;
+  --bg-gradient-via: #ffffff;
+  --bg-gradient-to: #f9fafb;
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-tertiary: #6b7280;
+  --text-quaternary: #9ca3af;
+
+  /* Borders */
+  --border-primary: #e5e7eb;
+  --border-secondary: #d1d5db;
+  --border-tertiary: #f3f4f6;
+
+  /* Accents */
+  --accent-indigo: #4f46e5;
+  --accent-indigo-hover: #4338ca;
+  --accent-indigo-light: #818cf8;
+
+  /* Legacy variables for compatibility */
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --secondary: #ec4899;
+  --background: #f3f4f6;
+  --card-bg: #ffffff;
+  --text-main: #1f2937;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --hover-bg: #f9fafb;
+}
+
+/* Dark Theme */
+.dark {
+  /* Backgrounds */
+  --bg-primary: #1f2937;
+  --bg-secondary: #111827;
+  --bg-tertiary: #374151;
+  --bg-gradient-from: #111827;
+  --bg-gradient-via: #1f2937;
+  --bg-gradient-to: #111827;
+
+  /* Text */
+  --text-primary: #f9fafb;
+  --text-secondary: #e5e7eb;
+  --text-tertiary: #d1d5db;
+  --text-quaternary: #9ca3af;
+
+  /* Borders */
+  --border-primary: #374151;
+  --border-secondary: #4b5563;
+  --border-tertiary: #1f2937;
+
+  /* Accents */
+  --accent-indigo: #818cf8;
+  --accent-indigo-hover: #a5b4fc;
+  --accent-indigo-light: #6366f1;
+
+  /* Legacy variables for compatibility */
+  --primary: #6366f1;
+  --primary-hover: #818cf8;
+  --secondary: #f472b6;
+  --background: #111827;
+  --card-bg: #1f2937;
+  --text-main: #f9fafb;
+  --text-muted: #9ca3af;
+  --border-color: #374151;
+  --input-bg: #1f2937;
+  --input-border: #4b5563;
+  --hover-bg: #374151;
+  color-scheme: dark;
+}
+
+
+/* Prevent white flash on page load */
+#root {
+  min-height: 100vh;
+}
+
+/* Smooth transitions for theme switching */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+
+/* Apply smooth transitions to all elements */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-in-out;
+}
+
+.btn-primary {
+  @apply bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors duration-200 font-medium cursor-pointer;
+}
+
+.btn-secondary {
+  @apply bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-200 font-medium cursor-pointer;
+}
+
+.input-field {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all duration-200;
+}
+
+.card {
+  @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c7c7c7;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Hero Section Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseSlow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 1s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.8s ease-out;
+}
+
+.animate-slide-up-delay {
+  animation: slideUp 0.8s ease-out 0.2s both;
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 3s ease-in-out infinite;
+}
