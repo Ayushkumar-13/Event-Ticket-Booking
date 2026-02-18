@@ -34,6 +34,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://event-ticket-booking-coral.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
