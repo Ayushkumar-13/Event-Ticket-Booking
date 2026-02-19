@@ -2,6 +2,10 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://event-tickets-booking.vercel.app/api' : 'http://localhost:5000/api');
 
+console.log("🚀 API URL Configured:", API_URL);
+console.log("🌐 VITE_API_URL:", import.meta.env.VITE_API_URL);
+console.log("🏭 PROD Mode:", import.meta.env.PROD);
+
 const api = axios.create({
     baseURL: API_URL,
     headers: {
