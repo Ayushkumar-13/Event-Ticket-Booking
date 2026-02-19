@@ -5,7 +5,7 @@ import { bookTicket } from '../../services/registrationService';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const RegistrationForm = ({ event, isBooked = false }) => {
+const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
 
