@@ -30,29 +30,7 @@ connectDB();
 const app = express();
 
 // Middleware
-// Middleware
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://event-ticket-booking-coral.vercel.app',
-  process.env.FRONTEND_URL
-].filter(Boolean);
-
-console.log('Allowed Origins:', allowedOrigins);
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('Blocked by CORS:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
+app.use(cors()); // Allow all origins for development/debugging
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

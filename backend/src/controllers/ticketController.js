@@ -51,8 +51,9 @@ const bookTicket = asyncHandler(async (req, res) => {
 
     console.log("Ticket created successfully:", ticket);
 
-    // Update available tickets
+    // Update available and sold tickets
     event.availableTickets -= quantity;
+    event.soldTickets = (event.soldTickets || 0) + quantity; // Increment sold tickets
     await event.save();
 
     res.status(201).json(ticket);

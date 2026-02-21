@@ -7,7 +7,7 @@ const eventSchema = mongoose.Schema({
     },
     description: {
         type: String,
-        required: [true, 'Please add a description']
+        required: false
     },
     date: {
         type: Date,
@@ -28,7 +28,7 @@ const eventSchema = mongoose.Schema({
     },
     category: {
         type: String,
-        required: [true, 'Please add a category']
+        required: false
     },
     image: {
         type: String,
@@ -39,6 +39,10 @@ const eventSchema = mongoose.Schema({
         type: Number,
         required: [true, 'Please add available tickets count'],
         min: 0
+    },
+    soldTickets: {
+        type: Number,
+        default: 0
     },
     organizer: {
         type: mongoose.Schema.Types.ObjectId,

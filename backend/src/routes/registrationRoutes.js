@@ -5,7 +5,7 @@ const {
     getEventRegistrations,
     updateRegistrationStatus,
     getRegistrationById
-} = require('../controllers/registration.controller');
+} = require('../controllers/registrationController');
 const { protect } = require('../middlewares/authMiddleware');
 
 // Public routes
