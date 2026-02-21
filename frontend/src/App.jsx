@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { EventProvider } from './context/EventContext';
@@ -20,12 +21,13 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 
 // Organizer Pages
-import OrganizerDashboard from './pages/organizer/OrganizerDashboard';
+const OrganizerDashboard = React.lazy(() => import('./pages/organizer/OrganizerDashboard'));
 import EventManagement from './pages/organizer/EventManagement';
-import CreateEvent from './pages/organizer/CreateEvent';
-import EditEvent from './pages/organizer/EditEvent';
-import RegistrationList from './components/organizer/RegistrationList';
+const CreateEvent = React.lazy(() => import('./pages/organizer/CreateEvent'));
+const EditEvent = React.lazy(() => import('./pages/organizer/EditEvent'));
+// import RegistrationList from './components/organizer/RegistrationList'; (Commented out as replaced by ExportReports)
 import OrganizerSettings from './pages/organizer/OrganizerSettings';
+const ExportReports = React.lazy(() => import('./pages/organizer/ExportReports')); // Added new lazy import
 
 // HOC
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -68,7 +70,8 @@ function App() {
                 <Route path="events" element={<EventManagement />} />
                 <Route path="events/new" element={<CreateEvent />} />
                 <Route path="events/edit/:id" element={<EditEvent />} />
-                <Route path="registrations" element={<RegistrationList />} />
+                {/* <Route path="registrations" element={<RegistrationList />} /> */}
+                <Route path="registrations" element={<ExportReports />} /> {/* Updated route to match Dashboard link */}
                 <Route path="settings" element={<OrganizerSettings />} />
               </Route>
 

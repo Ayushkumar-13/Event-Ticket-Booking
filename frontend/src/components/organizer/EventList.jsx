@@ -100,13 +100,12 @@ const EventList = () => {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex flex-col gap-1">
                                                 <div className="text-sm text-slate-700 font-medium">
-                                                    {/* Mock sold count calculation */}
-                                                    {Math.floor(Math.random() * 50)} <span className="text-slate-400 text-xs font-normal">/ {event.availableTickets + 50}</span>
+                                                    {event.soldTickets || 0} <span className="text-slate-400 text-xs font-normal">/ {(event.soldTickets || 0) + event.availableTickets}</span>
                                                 </div>
                                                 <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                                     <div
                                                         className="h-full bg-indigo-500 rounded-full"
-                                                        style={{ width: `${Math.random() * 100}%` }}
+                                                        style={{ width: `${Math.min(((event.soldTickets || 0) / ((event.soldTickets || 0) + event.availableTickets)) * 100, 100)}%` }}
                                                     ></div>
                                                 </div>
                                             </div>
