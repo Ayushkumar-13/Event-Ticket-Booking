@@ -1,1 +1,7 @@
 .env
+node_modules/
+
+# Local documentation
+docs/
+docs.md
+local-notes.md

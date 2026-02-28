@@ -41,7 +41,31 @@ const bookTicket = asyncHandler(async (req, res) => {
     }
     */
 
-    // Create ticket
+    // --- OPTIMISTIC CONCURRENCY CONTROL (OCC) ---
+    // Atomic update using versioning to prevent double-booking race condition
+    const updatedEvent = await Event.findOneAndUpdate(
+        {
+            _id: eventId,
+            __v: event.__v || 0, // The precise version we just read
+            availableTickets: { $gte: quantity } // Ensure tickets didn't drop below our requested quantity
+        },
+        {
+            $inc: {
+                availableTickets: -quantity,
+                soldTickets: quantity,
+                __v: 1 // Atomically increment the document version
+            }
+        },
+        { new: true } // Return the updated document to confirm success
+    );
+
+    if (!updatedEvent) {
+        // If null, someone else beat us to the database update or grabbed the last tickets!
+        res.status(409); // 409 Conflict
+        throw new Error('High demand! Tickets were purchased by another user while you were booking. Please try again.');
+    }
+
+    // Now definitely safe to create the ticket
     const ticket = await Ticket.create({
         user: req.user.id,
         event: eventId,
@@ -49,12 +73,7 @@ const bookTicket = asyncHandler(async (req, res) => {
         status: 'Confirmed'
     });
 
-    console.log("Ticket created successfully:", ticket);
-
-    // Update available and sold tickets
-    event.availableTickets -= quantity;
-    event.soldTickets = (event.soldTickets || 0) + quantity; // Increment sold tickets
-    await event.save();
+    console.log("Ticket created successfully with OCC:", ticket);
 
     res.status(201).json(ticket);
 });
