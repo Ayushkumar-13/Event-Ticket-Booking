@@ -53,4 +53,15 @@ const eventSchema = mongoose.Schema({
     timestamps: true
 });
 
+// --- DATABASE INDEXING STRATEGY ---
+// Feature 3: Compound Indexes for complex user queries
+// When an event app scales to millions of events, users querying by multiple fields 
+// (e.g. "Find Music events in New York this weekend") forces MongoDB to do a full collection scan.
+// This compound index creates a B-Tree sorting these three fields together,
+// completely optimizing read-heavy querying for the most common search patterns.
+eventSchema.index({ date: 1, location: 1, category: 1 });
+
+// We also add an index on organizer, as the planner dashboard frequently queries this.
+eventSchema.index({ organizer: 1 });
+
 module.exports = mongoose.model('Event', eventSchema);
