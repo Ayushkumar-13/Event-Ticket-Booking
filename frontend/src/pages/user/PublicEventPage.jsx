@@ -163,9 +163,16 @@ const PublicEventPage = () => {
                             </button>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        <div className="flex flex-wrap justify-center gap-8">
                             {filteredEvents.map((event) => (
-                                <EventCard key={event._id} event={event} isBooked={bookedEventIds.includes(event._id)} />
+                                <div
+                                    key={event._id}
+                                    className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.333rem)] flex"
+                                >
+                                    <div className="w-full">
+                                        <EventCard event={event} isBooked={bookedEventIds.includes(event._id)} />
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     )}
