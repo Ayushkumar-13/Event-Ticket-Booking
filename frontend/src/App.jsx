@@ -29,10 +29,22 @@ const EditEvent = React.lazy(() => import('./pages/organizer/EditEvent'));
 import OrganizerSettings from './pages/organizer/OrganizerSettings';
 const ExportReports = React.lazy(() => import('./pages/organizer/ExportReports')); // Added new lazy import
 
+import AOS from 'aos';
+import 'aos/dist/aos.css';
+
 // HOC
 import ProtectedRoute from './components/common/ProtectedRoute';
 
 function App() {
+  React.useEffect(() => {
+    AOS.init({
+      once: true, // Only animate once
+      offset: 100, // Offset (in px) from the original trigger point
+      duration: 800, // Values from 0 to 3000, with step 50ms
+      easing: 'ease-out-cubic', // Default easing for AOS animations
+    });
+  }, []);
+
   return (
     <ThemeProvider>
       <BrowserRouter>

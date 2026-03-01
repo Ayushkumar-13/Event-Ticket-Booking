@@ -164,13 +164,13 @@ const PublicEventPage = () => {
                         </div>
                     ) : (
                         <div className="flex flex-wrap justify-center gap-8">
-                            {filteredEvents.map((event) => (
+                            {filteredEvents.map((event, index) => (
                                 <div
                                     key={event._id}
                                     className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.333rem)] flex"
                                 >
                                     <div className="w-full">
-                                        <EventCard event={event} isBooked={bookedEventIds.includes(event._id)} />
+                                        <EventCard event={event} isBooked={bookedEventIds.includes(event._id)} index={index} />
                                     </div>
                                 </div>
                             ))}

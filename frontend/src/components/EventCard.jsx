@@ -2,10 +2,15 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Tag, CheckCircle } from 'lucide-react';
 
-const EventCard = ({ event, isBooked = false }) => {
+const EventCard = ({ event, isBooked = false, index = 0 }) => {
+    // Calculate a staggered delay based on the card's index in the grid (0, 100, 200...)
+    const delay = (index % 3) * 100;
+
     return (
         <Link
             to={`/event/${event._id}`}
+            data-aos="fade-up"
+            data-aos-delay={delay}
             className="card h-full flex flex-col hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
         >
             <div className="relative h-56 overflow-hidden">
