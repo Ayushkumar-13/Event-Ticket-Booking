@@ -26,10 +26,14 @@ const Login = () => {
         setError('');
         setLoading(true);
         try {
-            await login(formData.email, formData.password);
-            navigate(from, { replace: true });
+            const result = await login(formData.email, formData.password);
+            if (result.success) {
+                navigate(from, { replace: true });
+            } else {
+                setError(result.message || 'Failed to login');
+            }
         } catch (err) {
-            setError(err.message || 'Failed to login');
+            setError(err.message || 'An unexpected error occurred');
         } finally {
             setLoading(false);
         }
