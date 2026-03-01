@@ -24,6 +24,11 @@ const ticketSchema = mongoose.Schema({
     purchaseDate: {
         type: Date,
         default: Date.now
+    },
+    idempotencyKey: {
+        type: String,
+        unique: true,
+        sparse: true // Allows nulls/undefined for older records without conflicting
     }
 }, {
     timestamps: true

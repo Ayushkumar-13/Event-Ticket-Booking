@@ -13,6 +13,12 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
     const [status, setStatus] = useState('idle'); // idle, processing, success, error
     const [error, setError] = useState('');
 
+    const [idempotencyKey] = useState(() => {
+        return typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).substring(2);
+    });
+
     const handleBookTicket = async () => {
         if (!user) {
             // Redirect to login with return url
@@ -23,7 +29,7 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
         setError('');
 
         try {
-            await bookTicket(event._id, quantity);
+            await bookTicket(event._id, quantity, idempotencyKey);
             setStatus('success');
             if (onSuccess) onSuccess();
         } catch (err) {

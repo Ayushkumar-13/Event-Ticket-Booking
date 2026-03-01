@@ -1,8 +1,12 @@
 import api from './api';
 
-export const bookTicket = async (eventId, quantity) => {
+export const bookTicket = async (eventId, quantity, idempotencyKey) => {
     try {
-        const response = await api.post('/tickets/book', { eventId, quantity });
+        const response = await api.post('/tickets/book', { eventId, quantity }, {
+            headers: {
+                'Idempotency-Key': idempotencyKey
+            }
+        });
         return response.data;
     } catch (error) {
         console.error("📡 registrationService: Error booking ticket:", error);

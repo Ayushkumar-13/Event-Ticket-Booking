@@ -7,10 +7,21 @@ const Event = require('../models/Event');
 // @access  Private
 const bookTicket = asyncHandler(async (req, res) => {
     const { eventId, quantity } = req.body;
+    const idempotencyKey = req.headers['idempotency-key'];
 
     if (!eventId || !quantity) {
         res.status(400);
         throw new Error('Please add all fields');
+    }
+
+    // --- IDEMPOTENCY KEY CHECK ---
+    // Prevent double-charging during network drops or double-clicks
+    if (idempotencyKey) {
+        const existingTicket = await Ticket.findOne({ idempotencyKey });
+        if (existingTicket) {
+            console.log("🔄 Idempotency key match! Returning already processed ticket.");
+            return res.status(200).json(existingTicket);
+        }
     }
 
     const event = await Event.findById(eventId);
@@ -70,7 +81,8 @@ const bookTicket = asyncHandler(async (req, res) => {
         user: req.user.id,
         event: eventId,
         quantity,
-        status: 'Confirmed'
+        status: 'Confirmed',
+        idempotencyKey // Store key to prevent future double processing
     });
 
     console.log("Ticket created successfully with OCC:", ticket);
