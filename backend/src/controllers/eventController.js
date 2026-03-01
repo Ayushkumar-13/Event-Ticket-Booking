@@ -2,11 +2,40 @@ const asyncHandler = require('express-async-handler');
 const Event = require('../models/Event');
 const User = require('../models/User');
 
+const redisClient = require('../config/redis');
+
 // @desc    Get all events
 // @route   GET /api/events
 // @access  Public
 const getEvents = asyncHandler(async (req, res) => {
+    // --- DISTRIBUTED CACHING LAYER ---
+    // 1. Try to fetch from Redis first (Cache Hit)
+    try {
+        if (redisClient.isOpen) {
+            const cachedEvents = await redisClient.get('events_all');
+            if (cachedEvents) {
+                console.log("⚡ [Redis] Cache HIT! Returning events from memory instantly.");
+                return res.status(200).json(JSON.parse(cachedEvents));
+            }
+        }
+    } catch (err) {
+        console.error("Cache read error:", err.message);
+    }
+
+    // 2. If not in cache (Cache Miss), fetch from MongoDB
+    console.log("🐌 [MongoDB] Cache MISS! Fetching events from database...");
     const events = await Event.find().sort({ date: 1 });
+
+    // 3. Save the result to Redis for future requests (Expire in 1 hour)
+    try {
+        if (redisClient.isOpen) {
+            await redisClient.setEx('events_all', 3600, JSON.stringify(events));
+            console.log("💾 [Redis] Successfully cached the events list.");
+        }
+    } catch (err) {
+        console.error("Cache write error:", err.message);
+    }
+
     res.status(200).json(events);
 });
 
@@ -46,6 +75,13 @@ const createEvent = asyncHandler(async (req, res) => {
         organizer: req.user.id
     });
 
+    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
+    // Clear the cache because a new event has been added
+    if (redisClient.isOpen) {
+        await redisClient.del('events_all');
+        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event creation.");
+    }
+
     res.status(201).json(event);
 });
 
@@ -76,6 +112,12 @@ const updateEvent = asyncHandler(async (req, res) => {
         new: true,
     });
 
+    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
+    if (redisClient.isOpen) {
+        await redisClient.del('events_all');
+        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event update.");
+    }
+
     res.status(200).json(updatedEvent);
 });
 
@@ -103,6 +145,12 @@ const deleteEvent = asyncHandler(async (req, res) => {
     }
 
     await event.deleteOne();
+
+    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
+    if (redisClient.isOpen) {
+        await redisClient.del('events_all');
+        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event deletion.");
+    }
 
     res.status(200).json({ id: req.params.id });
 });

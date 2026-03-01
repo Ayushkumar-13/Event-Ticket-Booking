@@ -85,6 +85,14 @@ const bookTicket = asyncHandler(async (req, res) => {
         idempotencyKey // Store key to prevent future double processing
     });
 
+    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
+    // Clear the cache because 'availableTickets' has dropped
+    const redisClient = require('../config/redis');
+    if (redisClient.isOpen) {
+        await redisClient.del('events_all');
+        console.log("🧹 [Redis] Invalidated 'events_all' cache due to ticket purchase.");
+    }
+
     console.log("Ticket created successfully with OCC:", ticket);
 
     res.status(201).json(ticket);
