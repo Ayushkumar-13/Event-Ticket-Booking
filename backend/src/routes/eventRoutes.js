@@ -11,9 +11,11 @@ const {
 } = require('../controllers/eventController');
 const { protect, organizer } = require('../middlewares/authMiddleware');
 
-router.route('/').get(getEvents).post(protect, organizer, createEvent);
+const upload = require('../middlewares/uploadMiddleware');
+
+router.route('/').get(getEvents).post(protect, organizer, upload.single('image'), createEvent);
 router.route('/organizer').get(protect, organizer, getOrganizerEvents);
 router.route('/stats').get(protect, organizer, getDashboardStats);
-router.route('/:id').get(getEventById).put(protect, organizer, updateEvent).delete(protect, organizer, deleteEvent);
+router.route('/:id').get(getEventById).put(protect, organizer, upload.single('image'), updateEvent).delete(protect, organizer, deleteEvent);
 
 module.exports = router;

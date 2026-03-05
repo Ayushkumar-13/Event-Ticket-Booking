@@ -70,10 +70,13 @@ const createEvent = asyncHandler(async (req, res) => {
         throw new Error('Please add all required fields');
     }
 
-    const event = await Event.create({
-        ...req.body,
-        organizer: req.user.id
-    });
+    const eventData = { ...req.body, organizer: req.user.id };
+
+    if (req.file) {
+        eventData.image = req.file.path;
+    }
+
+    const event = await Event.create(eventData);
 
     // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
     // Clear the cache because a new event has been added
@@ -108,7 +111,13 @@ const updateEvent = asyncHandler(async (req, res) => {
         throw new Error('User not authorized');
     }
 
-    const updatedEvent = await Event.findByIdAndUpdate(req.params.id, req.body, {
+    const eventData = { ...req.body };
+
+    if (req.file) {
+        eventData.image = req.file.path;
+    }
+
+    const updatedEvent = await Event.findByIdAndUpdate(req.params.id, eventData, {
         new: true,
     });
 
