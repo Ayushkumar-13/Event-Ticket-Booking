@@ -1,4 +1,5 @@
 const redis = require('redis');
+require('dotenv').config();
 
 // Create a Redis client. 
 // It will try to connect to localhost:6379 by default if process.env.REDIS_URI is missing.
@@ -11,6 +12,7 @@ const redisClient = redis.createClient({
             // This allows the app to fallback to just using MongoDB without crashing
             if (retries > 3) {
                 console.warn('⚠️ Redis connection failed. Proceeding without caching layer.');
+                redisClient.removeAllListeners('error'); // stop emitting raw errors to uncaught process scope
                 return new Error('Redis retry exhausted');
             }
             return Math.min(retries * 50, 1000);

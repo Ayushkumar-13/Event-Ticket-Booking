@@ -43,8 +43,10 @@ app.get('/', (req, res) => {
   });
 });
 
+const apiLimiter = require('./middlewares/rateLimiter');
+
 // API Routes
-app.use('/api', routes);
+app.use('/api', apiLimiter, routes);
 
 // 404 Handler
 app.use(notFound);
