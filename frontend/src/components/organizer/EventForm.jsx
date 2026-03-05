@@ -67,10 +67,27 @@ const EventForm = () => {
         setError('');
 
         try {
+            const submitData = new FormData();
+            submitData.append('title', formData.title);
+            submitData.append('description', formData.description);
+            submitData.append('date', formData.date);
+            submitData.append('time', formData.time);
+            submitData.append('location', formData.location);
+            submitData.append('price', formData.price);
+            submitData.append('category', formData.category);
+            submitData.append('availableTickets', formData.availableTickets);
+
+            if (formData.imageFile) {
+                submitData.append('image', formData.imageFile);
+            } else if (formData.image && typeof formData.image === 'string' && !formData.image.includes('unsplash.com')) {
+                // Send existing image URL if not updating file, skip default mock images
+                submitData.append('image', formData.image);
+            }
+
             if (id) {
-                await editEvent(id, formData);
+                await editEvent(id, submitData);
             } else {
-                await addEvent(formData);
+                await addEvent(submitData);
             }
             navigate('/organizer/events');
         } catch (err) {
@@ -173,13 +190,25 @@ const EventForm = () => {
                     required
                 />
 
-                <Input
-                    label="Image URL"
-                    name="image"
-                    value={formData.image}
-                    onChange={handleChange}
-                    placeholder="https://example.com/image.jpg"
-                />
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Event Image</label>
+                    <input
+                        type="file"
+                        accept="image/*"
+                        name="image"
+                        onChange={(e) => {
+                            if (e.target.files[0]) {
+                                setFormData(prev => ({ ...prev, imageFile: e.target.files[0] }));
+                            }
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    />
+                    {formData.image && typeof formData.image === 'string' && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            Current image: <a href={formData.image} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">View</a>
+                        </p>
+                    )}
+                </div>
 
                 <div className="flex justify-end gap-3 pt-4">
                     <Button variant="secondary" onClick={() => navigate('/organizer/events')}>
