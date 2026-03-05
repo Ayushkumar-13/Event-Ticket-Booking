@@ -15,8 +15,6 @@ const Login = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const from = location.state?.from?.pathname || '/dashboard';
-
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -28,7 +26,19 @@ const Login = () => {
         try {
             const result = await login(formData.email, formData.password);
             if (result.success) {
-                navigate(from, { replace: true });
+                // If the user tried to access a specific page before login, send them there
+                if (location.state?.from?.pathname) {
+                    navigate(location.state.from.pathname, { replace: true });
+                } else {
+                    // Otherwise, dynamically route based on their role
+                    // Note: AuthContext might not return the user directly in `result`, so we fetch from localStorage
+                    const savedUser = JSON.parse(localStorage.getItem('user'));
+                    if (savedUser?.role === 'organizer') {
+                        navigate('/organizer/dashboard', { replace: true });
+                    } else {
+                        navigate('/dashboard', { replace: true });
+                    }
+                }
             } else {
                 setError(result.message || 'Failed to login');
             }
