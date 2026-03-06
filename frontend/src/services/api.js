@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// using relative path to leverage Vite proxy
-const API_URL = '/api';
+// Use VITE_API_URL during production, or fallback to relative path (to leverage Vite proxy) in development
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 console.log("🚀 API URL Configured:", API_URL);
 

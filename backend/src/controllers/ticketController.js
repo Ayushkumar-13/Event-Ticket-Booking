@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
+const { ticketQueue } = require('../config/queue');
 
 // @desc    Book a ticket
 // @route   POST /api/tickets/book
@@ -14,88 +15,22 @@ const bookTicket = asyncHandler(async (req, res) => {
         throw new Error('Please add all fields');
     }
 
-    // --- IDEMPOTENCY KEY CHECK ---
-    // Prevent double-charging during network drops or double-clicks
-    if (idempotencyKey) {
-        const existingTicket = await Ticket.findOne({ idempotencyKey });
-        if (existingTicket) {
-            console.log("🔄 Idempotency key match! Returning already processed ticket.");
-            return res.status(200).json(existingTicket);
-        }
-    }
-
-    const event = await Event.findById(eventId);
-
-    if (!event) {
-        res.status(404);
-        throw new Error('Event not found');
-    }
-
-    if (event.availableTickets < quantity) {
-        res.status(400);
-        throw new Error('Not enough tickets available');
-    }
-
-    // Check if user already has a ticket for this event
-    // Check if user already has a ticket for this event
-    /* 
-    // Allow multiple bookings for the same event (User Request)
-    const existingTicket = await Ticket.findOne({
-        user: req.user.id,
-        event: eventId,
-        status: 'Confirmed'
+    // Dispatch the ticket purchase operation to the BullMQ message queue!
+    const job = await ticketQueue.add('process-ticket', {
+        eventId,
+        userId: req.user.id,
+        ticketCount: quantity,
+        idempotencyKey
     });
 
-    if (existingTicket) {
-        res.status(400);
-        throw new Error('You have already booked a ticket for this event');
-    }
-    */
+    console.log(`[Queue] Added ticket registration job ${job.id} for user ${req.user.id}`);
 
-    // --- OPTIMISTIC CONCURRENCY CONTROL (OCC) ---
-    // Atomic update using versioning to prevent double-booking race condition
-    const updatedEvent = await Event.findOneAndUpdate(
-        {
-            _id: eventId,
-            __v: event.__v || 0, // The precise version we just read
-            availableTickets: { $gte: quantity } // Ensure tickets didn't drop below our requested quantity
-        },
-        {
-            $inc: {
-                availableTickets: -quantity,
-                soldTickets: quantity,
-                __v: 1 // Atomically increment the document version
-            }
-        },
-        { new: true } // Return the updated document to confirm success
-    );
-
-    if (!updatedEvent) {
-        // If null, someone else beat us to the database update or grabbed the last tickets!
-        res.status(409); // 409 Conflict
-        throw new Error('High demand! Tickets were purchased by another user while you were booking. Please try again.');
-    }
-
-    // Now definitely safe to create the ticket
-    const ticket = await Ticket.create({
-        user: req.user.id,
-        event: eventId,
-        quantity,
-        status: 'Confirmed',
-        idempotencyKey // Store key to prevent future double processing
+    // Respond immediately with 202 Accepted, giving UI the jobId to poll
+    res.status(202).json({
+        message: 'Ticket purchase queued successfully',
+        jobId: job.id,
+        status: 'pending'
     });
-
-    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
-    // Clear the cache because 'availableTickets' has dropped
-    const redisClient = require('../config/redis');
-    if (redisClient.isOpen) {
-        await redisClient.del('events_all');
-        console.log("🧹 [Redis] Invalidated 'events_all' cache due to ticket purchase.");
-    }
-
-    console.log("Ticket created successfully with OCC:", ticket);
-
-    res.status(201).json(ticket);
 });
 
 // @desc    Get user tickets

@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Registration = require('../models/Registration');
 const Event = require('../models/Event');
+const { ticketQueue } = require('../config/queue');
 
 // @desc    Register for an event
 // @route   POST /api/registrations
@@ -8,23 +9,50 @@ const Event = require('../models/Event');
 const createRegistration = asyncHandler(async (req, res) => {
     const { event, user, ticketCount, totalAmount } = req.body;
 
-    const registration = await Registration.create({
-        event,
-        user,
-        ticketCount,
-        totalAmount
-    });
-
-    // Update sold tickets count in Event
-    const eventDoc = await Event.findById(event);
-    if (eventDoc) {
-        eventDoc.soldTickets = (eventDoc.soldTickets || 0) + ticketCount;
-        eventDoc.availableTickets -= ticketCount; // Decrement available tickets
-        await eventDoc.save();
+    if (!event || !user || !ticketCount) {
+        res.status(400);
+        throw new Error('Please populate all booking fields');
     }
 
-    res.status(201).json(registration);
+    // Instead of processing immediately, we add it to the message queue
+    const job = await ticketQueue.add('process-ticket', {
+        eventId: event,
+        userId: user,
+        ticketCount,
+        amount: totalAmount
+    });
+
+    console.log(`[Queue] Added ticket registration job ${job.id}`);
+
+    // Return 202 Accepted meaning: I got the request, but I haven't finished processing it
+    res.status(202).json({
+        message: 'Ticket purchase queued successfully',
+        jobId: job.id,
+        status: 'pending'
+    });
 });
+
+// @desc    Check status of an async ticket purchase job
+// @route   GET /api/registrations/status/:jobId
+// @access  Public
+const checkJobStatus = asyncHandler(async (req, res) => {
+    const { jobId } = req.params;
+    const job = await ticketQueue.getJob(jobId);
+
+    if (!job) {
+        res.status(404);
+        throw new Error('Job not found');
+    }
+
+    const state = await job.getState();
+    res.status(200).json({
+        jobId: job.id,
+        state, // "waiting", "active", "completed", "failed"
+        result: job.returnvalue, // The data we returned inside the ticketWorker
+        failedReason: job.failedReason
+    });
+});
+
 
 // @desc    Get registrations for a specific event
 // @route   GET /api/registrations/event/:eventId
@@ -86,4 +114,5 @@ module.exports = {
     getEventRegistrations,
     getRegistrationById,
     updateRegistrationStatus,
+    checkJobStatus,
 };

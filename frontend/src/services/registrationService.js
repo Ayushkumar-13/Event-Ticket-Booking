@@ -14,6 +14,16 @@ export const bookTicket = async (eventId, quantity, idempotencyKey) => {
     }
 }
 
+export const pollJobStatus = async (jobId) => {
+    try {
+        const response = await api.get(`/registrations/status/${jobId}`);
+        return response.data; // { jobId, state, result, failedReason }
+    } catch (error) {
+        console.error("📡 registrationService: Error polling job status:", error);
+        throw error.response?.data || { message: "Failed to check booking status." };
+    }
+}
+
 export const getUserTickets = async () => {
     console.log("📡 registrationService: Calling GET /tickets/user");
     try {

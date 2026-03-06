@@ -4,12 +4,14 @@ const {
     createRegistration,
     getEventRegistrations,
     updateRegistrationStatus,
-    getRegistrationById
+    getRegistrationById,
+    checkJobStatus
 } = require('../controllers/registrationController');
 const { protect } = require('../middlewares/authMiddleware');
 
 // Public routes
 router.post('/', createRegistration);
+router.get('/status/:jobId', checkJobStatus);
 router.get('/:id', getRegistrationById);
 
 // Protected routes (Organizer only)

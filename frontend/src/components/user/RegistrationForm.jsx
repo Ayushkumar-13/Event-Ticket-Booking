@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle } from 'lucide-react';
 import Button from '../common/Button';
-import { bookTicket } from '../../services/registrationService';
+import { bookTicket, pollJobStatus } from '../../services/registrationService';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,9 +29,37 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
         setError('');
 
         try {
-            await bookTicket(event._id, quantity, idempotencyKey);
-            setStatus('success');
-            if (onSuccess) onSuccess();
+            const result = await bookTicket(event._id, quantity, idempotencyKey);
+
+            if (result.jobId) {
+                // Feature 7: Poll for Async Job Completion
+                setStatus('processing');
+
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResult = await pollJobStatus(result.jobId);
+
+                        if (statusResult.state === 'completed') {
+                            clearInterval(pollInterval);
+                            setStatus('success');
+                            if (onSuccess) onSuccess();
+                        } else if (statusResult.state === 'failed') {
+                            clearInterval(pollInterval);
+                            setError(statusResult.failedReason || 'Asynchronous booking failed');
+                            setStatus('error');
+                        }
+                        // if 'waiting' or 'active', keep polling
+                    } catch (pollErr) {
+                        clearInterval(pollInterval);
+                        setError(pollErr.message || 'Error tracking booking status');
+                        setStatus('error');
+                    }
+                }, 2000); // Poll every 2 seconds
+            } else {
+                // Fallback for immediate processing
+                setStatus('success');
+                if (onSuccess) onSuccess();
+            }
         } catch (err) {
             setError(err.message || 'Booking failed');
             setStatus('error');
