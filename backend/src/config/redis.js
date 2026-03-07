@@ -21,8 +21,8 @@ const redisClient = redis.createClient({
 });
 
 redisClient.on('error', (err) => {
-    // Suppress verbose error logging if we already know it's down
-    if (err.message !== 'Redis retry exhausted') {
+    // Suppress verbose error logging if we already know it's down or can't resolve
+    if (err.message !== 'Redis retry exhausted' && !err.message.includes('ENOTFOUND') && !err.message.includes('ECONNRESET')) {
         console.error('Redis Client Error:', err.message);
     }
 });
