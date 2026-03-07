@@ -81,6 +81,21 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
         user: { id: userId, email: job.data.userEmail, name: job.data.userName }
     });
 
+    // --- FEATURE 9: REAL-TIME DATA (WEBSOCKETS) ---
+    // Broadcast the new available ticket count to all users instantly 
+    // to update their UI without a page refresh!
+    try {
+        const { getIO } = require('../socket');
+        const io = getIO();
+        io.emit('ticket_updated', {
+            eventId: eventId,
+            availableTickets: updatedEvent.availableTickets
+        });
+        console.log(`🔌 [Socket.IO] Broadcasted new available tickets (${updatedEvent.availableTickets}) for event ${eventId}`);
+    } catch (socketErr) {
+        console.error('Socket emission failed:', socketErr.message);
+    }
+
     console.log(`[Worker] Job ${job.id} SUCCESS: Created ticket ${ticket._id}`);
 
     // Return data for the polling endpoint

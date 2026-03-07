@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "src/server.js",
   "scripts": {
+    "predev": "npx -y kill-port 5000",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest"
@@ -28,7 +29,8 @@
     "nodemailer": "^8.0.1",
     "pdfkit": "^0.17.2",
     "rate-limit-redis": "^4.3.1",
-    "redis": "^5.11.0"
+    "redis": "^5.11.0",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "jest": "^29.7.0",
