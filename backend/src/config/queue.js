@@ -6,6 +6,7 @@ require('dotenv').config();
 const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    family: 4, // Force IPv4 to fix getaddrinfo ENOTFOUND errors in Node.js
     retryStrategy(times) {
         if (times > 3) {
             console.warn('⚠️ BullMQ Redis connection failed. Queue processing will be paused.');
@@ -37,12 +38,31 @@ const ticketQueue = new Queue('ticket-processing', {
 
 // Suppress queue-level unhandled connection errors
 ticketQueue.on('error', (err) => {
-    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET')) {
-        console.error('BullMQ Queue Error:', err.message);
+    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET') && !err.message.includes('ETIMEDOUT')) {
+        console.error('BullMQ Ticket Queue Error:', err.message);
+    }
+});
+
+// Initialize Notification Queue (Feature 8)
+const notificationQueue = new Queue('notification-processing', {
+    connection,
+    defaultJobOptions: {
+        attempts: 5, // Give emails more attempts in case SMTP is slow
+        backoff: {
+            type: 'exponential',
+            delay: 2000
+        }
+    }
+});
+
+notificationQueue.on('error', (err) => {
+    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET') && !err.message.includes('ETIMEDOUT')) {
+        console.error('BullMQ Notification Queue Error:', err.message);
     }
 });
 
 module.exports = {
     ticketQueue,
+    notificationQueue,
     connection
 };

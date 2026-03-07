@@ -71,6 +71,16 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
         console.log("🧹 [Redis Worker] Invalidated 'events_all' cache due to ticket purchase.");
     }
 
+    // --- FEATURE 8: ASYNCHRONOUS BACKGROUND NOTIFICATIONS ---
+    // Push the heavy PDF generation and slow SMTP email sending to a separate worker
+    // to prevent the ticket-processing line from getting backed up.
+    const { notificationQueue } = require('../config/queue');
+    await notificationQueue.add('send-ticket-email', {
+        ticket,
+        event: updatedEvent,
+        user: { id: userId, email: job.data.userEmail, name: job.data.userName }
+    });
+
     console.log(`[Worker] Job ${job.id} SUCCESS: Created ticket ${ticket._id}`);
 
     // Return data for the polling endpoint
@@ -87,7 +97,7 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
 // Worker error handlers
 ticketWorker.on('error', (err) => {
     // Catch worker-level network disconnects so they don't blow up the console
-    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET')) {
+    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET') && !err.message.includes('ETIMEDOUT')) {
         console.error('BullMQ Worker Connection Error:', err.message);
     }
 });

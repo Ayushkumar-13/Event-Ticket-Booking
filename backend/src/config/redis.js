@@ -7,6 +7,7 @@ require('dotenv').config();
 const redisClient = redis.createClient({
     url: process.env.REDIS_URI || 'redis://127.0.0.1:6379',
     socket: {
+        family: 4, // Force IPv4
         reconnectStrategy: (retries) => {
             // Give up after 3 tries if Redis is completely unavailable
             // This allows the app to fallback to just using MongoDB without crashing

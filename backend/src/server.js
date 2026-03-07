@@ -1,6 +1,7 @@
 // src/server.js
 const app = require('./app');
-require('./workers/ticketWorker'); // Start background processors
+require('./workers/ticketWorker'); // Start ticket processor
+require('./workers/notificationWorker'); // Start email/PDF processor
 
 const PORT = process.env.PORT || 5000;
 
