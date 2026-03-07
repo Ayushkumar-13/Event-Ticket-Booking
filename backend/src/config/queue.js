@@ -35,6 +35,13 @@ const ticketQueue = new Queue('ticket-processing', {
     }
 });
 
+// Suppress queue-level unhandled connection errors
+ticketQueue.on('error', (err) => {
+    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET')) {
+        console.error('BullMQ Queue Error:', err.message);
+    }
+});
+
 module.exports = {
     ticketQueue,
     connection

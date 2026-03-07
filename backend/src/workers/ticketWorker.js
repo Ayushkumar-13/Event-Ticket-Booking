@@ -85,6 +85,13 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
 });
 
 // Worker error handlers
+ticketWorker.on('error', (err) => {
+    // Catch worker-level network disconnects so they don't blow up the console
+    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET')) {
+        console.error('BullMQ Worker Connection Error:', err.message);
+    }
+});
+
 ticketWorker.on('failed', (job, err) => {
     console.error(`[BullMQ Worker] Job ${job?.id} failed with error ${err.message}`);
 });
