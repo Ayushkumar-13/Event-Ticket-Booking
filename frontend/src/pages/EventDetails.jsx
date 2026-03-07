@@ -47,6 +47,33 @@ const EventDetails = () => {
         checkBookingStatus();
     }, [user, id]);
 
+    // --- FEATURE 9: REAL-TIME DATA (WEBSOCKETS) ---
+    // Listen for live ticket updates from the background worker
+    useEffect(() => {
+        // Dynamically grab the backend base URL (removing the /api suffix)
+        const API_URL = import.meta.env.VITE_API_URL || '/api';
+        const SOCKET_URL = API_URL.replace(/\/api$/, '') || window.location.origin;
+
+        // Note: Using dynamic import to avoid crashes if socket.io-client isn't fully installed yet
+        let socket;
+        import('socket.io-client').then(({ io }) => {
+            socket = io(SOCKET_URL);
+
+            socket.on('ticket_updated', (data) => {
+                // Only update the screen if the broadcasted ticket purchase was for THIS specific event
+                if (data.eventId === id) {
+                    console.log(`🎫 [WebSocket] Live Update! Tickets remaining: ${data.availableTickets}`);
+                    setEvent(prev => prev ? { ...prev, availableTickets: data.availableTickets } : prev);
+                }
+            });
+        }).catch(err => console.error("Socket.io not found", err));
+
+        // Cleanup the websocket connection when the user leaves the page
+        return () => {
+            if (socket) socket.disconnect();
+        };
+    }, [id]);
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
