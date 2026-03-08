@@ -7,6 +7,7 @@ const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379'
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     family: 4, // Force IPv4 to fix getaddrinfo ENOTFOUND errors in Node.js
+    tls: process.env.REDIS_URI && process.env.REDIS_URI.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
     retryStrategy(times) {
         if (times > 3) {
             console.warn('⚠️ BullMQ Redis connection failed. Queue processing will be paused.');
