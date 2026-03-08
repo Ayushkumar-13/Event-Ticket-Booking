@@ -1,6 +1,11 @@
 const request = require('supertest');
 const app = require('../app'); // This imports the Express app without starting the listen() port
 
+// Mock deep-email-validator to always return valid in tests
+jest.mock('deep-email-validator', () => ({
+    validate: jest.fn().mockResolvedValue({ valid: true })
+}));
+
 describe('Authentication API (Unit/Integration Tests)', () => {
 
     // Test data

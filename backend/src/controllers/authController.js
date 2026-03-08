@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
+const emailValidator = require('deep-email-validator');
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -12,6 +13,15 @@ const registerUser = asyncHandler(async (req, res) => {
     if (!name || !email || !password) {
         res.status(400);
         throw new Error('Please add all fields');
+    }
+
+    // Deep email validation
+    const { valid, reason, validators } = await emailValidator.validate(email);
+    if (!valid) {
+        res.status(400);
+        // Provide specific reason if possible, otherwise generic message
+        const errorMessage = validators[reason]?.reason || 'Please provide a valid and active email address';
+        throw new Error(`Invalid email: ${errorMessage}`);
     }
 
     // Check if user exists

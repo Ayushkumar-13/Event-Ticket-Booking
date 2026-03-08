@@ -3,6 +3,11 @@ const app = require('../../src/app');
 const mongoose = require('mongoose');
 const Event = require('../../src/models/Event');
 
+// Mock deep-email-validator
+jest.mock('deep-email-validator', () => ({
+    validate: jest.fn().mockResolvedValue({ valid: true })
+}));
+
 describe('Registration Endpoints', () => {
     let userToken;
     let eventId;

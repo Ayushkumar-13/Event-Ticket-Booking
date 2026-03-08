@@ -2,6 +2,11 @@ const request = require('supertest');
 const app = require('../../src/app');
 const mongoose = require('mongoose');
 
+// Mock deep-email-validator
+jest.mock('deep-email-validator', () => ({
+    validate: jest.fn().mockResolvedValue({ valid: true })
+}));
+
 describe('Event Endpoints', () => {
     let token;
 

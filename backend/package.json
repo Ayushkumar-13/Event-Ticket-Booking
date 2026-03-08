@@ -17,6 +17,7 @@
     "bullmq": "^5.70.2",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
+    "deep-email-validator": "^0.1.21",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
     "express-async-handler": "^1.2.0",

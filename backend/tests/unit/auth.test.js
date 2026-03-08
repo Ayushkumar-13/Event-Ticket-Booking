@@ -3,6 +3,11 @@ const app = require('../../src/app');
 const mongoose = require('mongoose');
 const User = require('../../src/models/User');
 
+// Mock deep-email-validator
+jest.mock('deep-email-validator', () => ({
+    validate: jest.fn().mockResolvedValue({ valid: true })
+}));
+
 describe('Auth Endpoints', () => {
 
     beforeAll(async () => {
