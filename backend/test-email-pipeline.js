@@ -9,27 +9,30 @@ const { sendTicketEmail } = require('./src/utils/emailSender');
 (async () => {
     try {
         await mongoose.connect(process.env.MONGO_URI);
-        const ticket = await Ticket.findOne({}).populate('user').populate('event');
+
+        // Use the most recent ticket with populated user and event
+        const ticket = await Ticket.findOne({ status: 'Confirmed' })
+            .sort({ createdAt: -1 })
+            .populate('user')
+            .populate('event');
 
         if (!ticket || !ticket.user || !ticket.event) {
-            console.log("No valid ticket found with populated user/event to mock!");
+            console.log("❌ No confirmed ticket with user+event found!");
             process.exit(1);
         }
 
-        console.log(`Mocking Job Payload execution for Ticket ${ticket._id}...`);
+        console.log(`📬 Sending test email to: ${ticket.user.email}`);
+        console.log(`🎟️  For event: ${ticket.event.title}`);
 
-        // Emulate notificationWorker Step 1
-        console.log("Generating PDF Buffer...");
         const pdfBuffer = await generateTicketPDF(ticket, ticket.event, ticket.user);
-        console.log("✓ PDF Buffer generated:", pdfBuffer.length, "bytes");
+        console.log(`✓ PDF generated: ${pdfBuffer.length} bytes`);
 
-        // Emulate notificationWorker Step 2
-        console.log("Dispatching Email through Nodemailer...");
         const result = await sendTicketEmail(ticket.user, ticket.event, pdfBuffer);
-        console.log("✓ Email success! View ID:", result.messageId);
+        console.log(`✅ Email sent! Message ID: ${result.messageId}`);
+        console.log(`📧 From: ${process.env.SMTP_USER} → To: ${ticket.user.email}`);
 
     } catch (err) {
-        console.error("FATAL CRASH:", err);
+        console.error("❌ FAILED:", err.message);
     } finally {
         process.exit(0);
     }

@@ -1,95 +1,69 @@
 const nodemailer = require('nodemailer');
 
-/**
- * Creates a reusable transporter using Gmail SMTP (or Ethereal as fallback for dev)
- * Set SMTP_USER and SMTP_PASS in your .env to use Gmail.
- * For Gmail, enable "App Passwords" in your Google Account security settings.
- */
-const createTransporter = async () => {
-    // Use real SMTP credentials if provided in environment
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        return nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS // Use an App Password, not your real password
-            }
-        });
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
     }
-
-    // Fallback to Ethereal test account (for local development without SMTP creds)
-    console.warn('⚠️ [Email] SMTP_USER/SMTP_PASS not set. Using Ethereal test account. Emails will NOT be delivered to real inboxes.');
-    const testAccount = await nodemailer.createTestAccount();
-    return nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-            user: testAccount.user,
-            pass: testAccount.pass
-        }
-    });
+  });
 };
 
 /**
- * Sends a ticket confirmation email with PDF attached
+ * Sends a ticket confirmation email with PDF attached via Gmail SMTP
  * @param {Object} user - { name, email }
- * @param {Object} event - { title, date, location, time }
- * @param {Buffer} pdfBuffer - Generated PDF in memory
+ * @param {Object} event - { title, date, location, time, price }
+ * @param {Buffer} pdfBuffer - Generated PDF ticket in memory
  */
 const sendTicketEmail = async (user, event, pdfBuffer) => {
-    const transporter = await createTransporter();
+  const transporter = createTransporter();
 
-    const mailOptions = {
-        from: `"EventTix" <${process.env.SMTP_USER || 'noreply@eventtix.com'}>`,
-        to: user.email,
-        subject: `🎟️ Your Ticket for ${event.title} — EventTix`,
-        text: `Hi ${user.name},\n\nYour ticket booking for "${event.title}" is confirmed!\n\nEvent Details:\n• Date: ${new Date(event.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n• Time: ${event.time}\n• Location: ${event.location}\n\nYour digital ticket is attached. Please present it at the entrance.\n\nThank you for booking with EventTix!`,
-        html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-                    <h1 style="color: white; margin: 0; font-size: 28px;">🎟️ EventTix</h1>
-                    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0;">Your Ticket is Confirmed!</p>
-                </div>
-                <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px;">
-                    <h2 style="color: #1f2937;">Hi ${user.name}! 👋</h2>
-                    <p style="color: #6b7280;">Great news! Your booking for <strong style="color: #4f46e5;">${event.title}</strong> has been confirmed.</p>
-                    
-                    <div style="background: #f3f4f6; border-left: 4px solid #4f46e5; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                        <h3 style="margin: 0 0 8px; color: #374151;">Event Details</h3>
-                        <p style="margin: 4px 0; color: #6b7280;">📅 <strong>${new Date(event.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong></p>
-                        <p style="margin: 4px 0; color: #6b7280;">⏰ <strong>${event.time}</strong></p>
-                        <p style="margin: 4px 0; color: #6b7280;">📍 <strong>${event.location}</strong></p>
-                    </div>
+  const eventDate = new Date(event.date).toLocaleDateString('en-IN', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
 
-                    <p style="color: #6b7280;">📎 Your digital ticket PDF is attached to this email. Please present it at the venue entrance.</p>
-                    
-                    <div style="text-align: center; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-                        <p style="color: #9ca3af; font-size: 12px;">EventTix — Book Amazing Events</p>
-                    </div>
-                </div>
+  const info = await transporter.sendMail({
+    from: `"EventTix" <${process.env.SMTP_USER}>`,
+    replyTo: process.env.SMTP_USER,
+    to: user.email,
+    subject: `Your Booking Confirmation — ${event.title} | EventTix`,
+    text: `Hi ${user.name},\n\nYour booking for "${event.title}" is confirmed!\n\nDate: ${eventDate}\nTime: ${event.time}\nLocation: ${event.location}\n\nYour e-ticket is attached. Please present it at the venue.\n\nThanks,\nEventTix Team`,
+    html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;">
+          <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 40px;border-radius:12px 12px 0 0;">
+            <h1 style="color:#fff;margin:0;font-size:26px;">🎟 EventTix</h1>
+            <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:14px;">Your official booking confirmation</p>
+          </div>
+          <div style="background:#fff;padding:32px 40px;">
+            <h2 style="color:#1f2937;font-size:20px;margin:0 0 8px;">Hi ${user.name}! 👋</h2>
+            <p style="color:#6b7280;margin:0 0 24px;">Your booking for <strong style="color:#4f46e5;">${event.title}</strong> is <strong style="color:#16a34a;">confirmed</strong>. Your e-ticket is attached.</p>
+            <div style="background:#f3f4f6;border-left:4px solid #4f46e5;border-radius:8px;padding:20px;margin-bottom:24px;">
+              <h3 style="margin:0 0 12px;color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">Event Details</h3>
+              <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="padding:5px 0;color:#6b7280;font-size:13px;width:35%;">📅 Date</td><td style="padding:5px 0;color:#111827;font-weight:600;font-size:13px;">${eventDate}</td></tr>
+                <tr><td style="padding:5px 0;color:#6b7280;font-size:13px;">⏰ Time</td><td style="padding:5px 0;color:#111827;font-weight:600;font-size:13px;">${event.time}</td></tr>
+                <tr><td style="padding:5px 0;color:#6b7280;font-size:13px;">📍 Location</td><td style="padding:5px 0;color:#111827;font-weight:600;font-size:13px;">${event.location}</td></tr>
+              </table>
             </div>
-        `,
-        attachments: [
-            {
-                filename: `${event.title.replace(/\s+/g, '_')}_Ticket.pdf`,
-                content: pdfBuffer,
-                contentType: 'application/pdf'
-            }
-        ]
-    };
+            <p style="color:#6b7280;font-size:13px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;">
+              📎 <strong>Your e-ticket PDF is attached</strong> to this email. Please show it at the venue entrance.
+            </p>
+          </div>
+          <div style="background:#f3f4f6;padding:20px 40px;border-radius:0 0 12px 12px;text-align:center;">
+            <p style="color:#9ca3af;font-size:11px;margin:0;">EventTix · eventtix141@gmail.com</p>
+            <p style="color:#9ca3af;font-size:11px;margin:4px 0 0;">This is an automated email. Please do not reply directly.</p>
+          </div>
+        </div>`,
+    attachments: [{
+      filename: `${event.title.replace(/\s+/g, '_')}_Ticket.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    }]
+  });
 
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log(`✉️ [Email Sender] Ticket email sent to ${user.email}`);
-
-    // Log preview URL only if using Ethereal (test mode)
-    if (!process.env.SMTP_USER) {
-        const previewUrl = nodemailer.getTestMessageUrl(info);
-        console.log(`🔍 [Email Sender] Preview URL (Ethereal test): ${previewUrl}`);
-    }
-
-    return info;
+  console.log(`✅ [Email] Ticket sent to ${user.email} via Gmail SMTP | ID: ${info.messageId}`);
+  return info;
 };
 
 module.exports = { sendTicketEmail };
