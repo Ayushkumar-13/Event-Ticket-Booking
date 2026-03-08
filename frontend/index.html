@@ -22,22 +22,19 @@
     /* Prevent white flash with theme-aware background */
     html {
       background-color: #f9fafb;
-      /* gray-50 for light mode */
+      color: #111827;
     }
 
     html.dark {
       background-color: #111827;
-      /* gray-900 for dark mode */
-    }
-
-    body {
-      background-color: transparent;
+      color: #f3f4f6;
     }
   </style>
 </head>
 
-<body>
-  <div id="root"></div>
+<body
+  class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-200 antialiased">
+  <div id="root" class="min-h-screen flex flex-col"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

@@ -76,7 +76,7 @@ const EventDetails = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+            <div className="flex-grow flex items-center justify-center">
                 <Loader2 className="animate-spin text-indigo-600 dark:text-indigo-400" size={48} />
             </div>
         );
@@ -85,7 +85,7 @@ const EventDetails = () => {
     if (!event) return null;
 
     return (
-        <div className="bg-gray-50 dark:bg-gray-900 min-h-screen pb-12 transition-colors duration-200">
+        <div className="flex-grow pb-12">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <button
                     onClick={() => navigate(-1)}

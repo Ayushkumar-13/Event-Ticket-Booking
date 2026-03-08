@@ -6,7 +6,7 @@ import Card from '../../components/common/Card';
 
 const RegistrationSuccess = () => {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="flex-grow flex items-center justify-center p-4">
             <Card className="text-center max-w-md w-full py-12">
                 <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                     <CheckCircle size={40} />

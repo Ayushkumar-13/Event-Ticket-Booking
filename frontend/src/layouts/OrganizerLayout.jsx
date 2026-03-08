@@ -35,7 +35,7 @@ const OrganizerLayout = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-gray-900 flex transition-colors">
+        <div className="flex w-full">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
                 <div

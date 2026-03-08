@@ -81,7 +81,7 @@ const PublicEventPage = () => {
     if (error) return <ErrorMessage message={error} />;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-300">
+        <div className="flex-grow">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
                 {/* Hero Section with Enhanced Design */}
                 <div className="text-center mb-16 relative">

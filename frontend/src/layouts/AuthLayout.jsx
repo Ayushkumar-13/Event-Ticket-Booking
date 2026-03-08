@@ -3,7 +3,7 @@ import { Outlet, Link } from 'react-router-dom';
 
 const AuthLayout = () => {
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-200">
+        <div className="flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
                 <Link to="/" className="flex justify-center items-center gap-2 mb-6">
                     <div className="w-10 h-10 rounded-lg bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-bold text-xl">
