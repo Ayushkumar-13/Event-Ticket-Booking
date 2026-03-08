@@ -25,8 +25,11 @@ const { errorHandler } = require('./middlewares/errorMiddleware');
 const notFound = require('./middlewares/notFoundMiddleware');
 
 
-// Connect to MongoDB
-connectDB();
+// Connect to MongoDB ONLY if not running Jest tests
+// The testing suite provides its own mongod-memory-server wrapper
+if (process.env.NODE_ENV !== 'test') {
+  connectDB();
+}
 
 // Initialize Express app
 const app = express();

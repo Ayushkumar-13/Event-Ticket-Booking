@@ -1,0 +1,101 @@
+  console.log
+    🔐 Auth: Token received
+
+      at log (src/middlewares/authMiddleware.js:12:21)
+
+  console.log
+    🔐 Auth: Token decoded, user ID: 69acc62d483288d3d912cf7d
+
+      at log (src/middlewares/authMiddleware.js:16:21)
+
+  console.log
+    🔐 Auth: User found: organizer@events.com
+
+      at log (src/middlewares/authMiddleware.js:20:21)
+
+  console.log
+    🧹 [Redis] Invalidated 'events_all' cache due to event creation.
+
+      at log (src/controllers/eventController.js:85:17)
+
+  console.error
+    ❌ Auth: No token provided
+
+    [0m [90m 29 |[39m
+     [90m 30 |[39m     [36mif[39m ([33m![39mtoken) {
+    [31m[1m>[22m[39m[90m 31 |[39m         console[33m.[39merror([32m"❌ Auth: No token provided"[39m)[33m;[39m
+     [90m    |[39m                 [31m[1m^[22m[39m
+     [90m 32 |[39m         res[33m.[39mstatus([35m401[39m)[33m;[39m
+     [90m 33 |[39m         [36mthrow[39m [36mnew[39m [33mError[39m([32m'Not authorized, no token'[39m)[33m;[39m
+     [90m 34 |[39m     }[0m
+
+      at error (src/middlewares/authMiddleware.js:31:17)
+      at asyncUtilWrap (node_modules/express-async-handler/index.js:3:20)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at next (node_modules/express/lib/router/route.js:149:13)
+      at next (node_modules/express/lib/router/route.js:145:7)
+      at Route.dispatch (node_modules/express/lib/router/route.js:119:3)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at node_modules/express/lib/router/index.js:284:15
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at Function.handle (node_modules/express/lib/router/index.js:175:3)
+      at router (node_modules/express/lib/router/index.js:47:12)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:328:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at Function.handle (node_modules/express/lib/router/index.js:175:3)
+      at router (node_modules/express/lib/router/index.js:47:12)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:328:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at next (src/middlewares/rateLimiter.js:29:16)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:328:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at urlencodedParser (node_modules/body-parser/lib/types/urlencoded.js:82:7)
+      at Layer.handle [as handle_request] (node_modules/express/lib/router/layer.js:95:5)
+      at trim_prefix (node_modules/express/lib/router/index.js:328:13)
+      at node_modules/express/lib/router/index.js:286:9
+      at Function.process_params (node_modules/express/lib/router/index.js:346:12)
+      at next (node_modules/express/lib/router/index.js:280:10)
+      at node_modules/body-parser/lib/read.js:137:5
+      at invokeCallback (node_modules/raw-body/index.js:238:16)
+      at done (node_modules/raw-body/index.js:227:7)
+      at IncomingMessage.onEnd (node_modules/raw-body/index.js:287:7)
+
+  console.log
+    🐌 [MongoDB] Cache MISS! Fetching events from database...
+
+      at log (src/controllers/eventController.js:26:13)
+
+  console.log
+    💾 [Redis] Successfully cached the events list.
+
+      at log (src/controllers/eventController.js:33:21)
+
+
+
+(node:936) [MONGOOSE] DeprecationWarning: Mongoose: the `strictQuery` option will be switched back to `false` by default in Mongoose 7. Use `mongoose.set('strictQuery', false);` if you want to prepare for this change. Or use `mongoose.set('strictQuery', true);` to suppress this warning.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS src/__tests__/event.test.js (9.781 s)
+  Event API (Integration Tests)
+    POST /api/events
+      √ should create a new event when authorized as an organizer (608 ms)
+      √ should fail to create an event if the Authorization token is missing (230 ms)
+    GET /api/events
+      √ should fetch all events successfully (Cache Miss Simulation) (234 ms)
+      √ should fetch a single event by ID (232 ms)
+      √ should return 404 for an invalid event ID format (219 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        9.974 s
+Ran all test suites matching /src\\__tests__\\event.test.js/i.

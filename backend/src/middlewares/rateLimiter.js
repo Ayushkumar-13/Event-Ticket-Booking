@@ -24,6 +24,11 @@ const memoryLimiter = rateLimit({
 let redisLimiter = null;
 
 const apiLimiter = (req, res, next) => {
+    // 🚀 Bypassing Rate Limiter completely during Automated Testing
+    if (process.env.NODE_ENV === 'test') {
+        return next();
+    }
+
     if (redisClient.isReady) {
         if (!redisLimiter) {
             console.log('🛡️ Rate Limiter: Promoted to Redis Distributed Store');
