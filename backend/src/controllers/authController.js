@@ -16,7 +16,15 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // Deep email validation
-    const { valid, reason, validators } = await emailValidator.validate(email);
+    const { valid, reason, validators } = await emailValidator.validate({
+        email: email,
+        validateRegex: true,
+        validateMx: true,
+        validateTypo: true,
+        validateDisposable: true,
+        validateSMTP: false // Disable SMTP to prevent timeouts
+    });
+
     if (!valid) {
         res.status(400);
         // Provide specific reason if possible, otherwise generic message
