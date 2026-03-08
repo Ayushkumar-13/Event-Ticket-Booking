@@ -28,8 +28,17 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
         setStatus('processing');
         setError('');
 
+        const targetEventId = event._id || event.id;
+        console.log(`[Booking] Initiating booking for Event ID: ${targetEventId}, Quantity: ${quantity}`);
+
+        if (!targetEventId) {
+            setError('System Error: the Event ID is missing from the payload. Cannot proceed.');
+            setStatus('error');
+            return;
+        }
+
         try {
-            const result = await bookTicket(event._id, quantity, idempotencyKey);
+            const result = await bookTicket(targetEventId, quantity, idempotencyKey);
 
             if (result.jobId) {
                 // Feature 7: Poll for Async Job Completion

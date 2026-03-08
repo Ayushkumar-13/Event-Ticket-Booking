@@ -9,7 +9,7 @@ const Loader = ({ size = 'md', fullScreen = false }) => {
     };
 
     const loaderContent = (
-        <div className="flex flex-col items-center justify-center text-indigo-600">
+        <div className="flex flex-col items-center justify-center text-indigo-600 dark:text-indigo-400">
             <Loader2 className="animate-spin" size={sizes[size]} />
             <span className="sr-only">Loading...</span>
         </div>
@@ -17,7 +17,7 @@ const Loader = ({ size = 'md', fullScreen = false }) => {
 
     if (fullScreen) {
         return (
-            <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="fixed inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-50 flex items-center justify-center transition-colors duration-200">
                 {loaderContent}
             </div>
         );
