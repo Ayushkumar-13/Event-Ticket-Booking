@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle } from 'lucide-react';
 import Button from '../common/Button';
-import { bookTicket, pollJobStatus } from '../../services/registrationService';
+import { bookTicket } from '../../services/registrationService';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -21,7 +21,6 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
 
     const handleBookTicket = async () => {
         if (!user) {
-            // Redirect to login with return url
             return navigate('/login', { state: { from: { pathname: `/event/${event._id}` } } });
         }
 
@@ -29,48 +28,20 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
         setError('');
 
         const targetEventId = event._id || event.id;
-        console.log(`[Booking] Initiating booking for Event ID: ${targetEventId}, Quantity: ${quantity}`);
 
         if (!targetEventId) {
-            setError('System Error: the Event ID is missing from the payload. Cannot proceed.');
+            setError('System Error: Event ID is missing. Cannot proceed.');
             setStatus('error');
             return;
         }
 
         try {
-            const result = await bookTicket(targetEventId, quantity, idempotencyKey);
-
-            if (result.jobId) {
-                // Feature 7: Poll for Async Job Completion
-                setStatus('processing');
-
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const statusResult = await pollJobStatus(result.jobId);
-
-                        if (statusResult.state === 'completed') {
-                            clearInterval(pollInterval);
-                            setStatus('success');
-                            if (onSuccess) onSuccess();
-                        } else if (statusResult.state === 'failed') {
-                            clearInterval(pollInterval);
-                            setError(statusResult.failedReason || 'Asynchronous booking failed');
-                            setStatus('error');
-                        }
-                        // if 'waiting' or 'active', keep polling
-                    } catch (pollErr) {
-                        clearInterval(pollInterval);
-                        setError(pollErr.message || 'Error tracking booking status');
-                        setStatus('error');
-                    }
-                }, 2000); // Poll every 2 seconds
-            } else {
-                // Fallback for immediate processing
-                setStatus('success');
-                if (onSuccess) onSuccess();
-            }
+            // Tickets are now created synchronously — immediate success response
+            await bookTicket(targetEventId, quantity, idempotencyKey);
+            setStatus('success');
+            if (onSuccess) onSuccess();
         } catch (err) {
-            setError(err.message || 'Booking failed');
+            setError(err.message || 'Booking failed. Please try again.');
             setStatus('error');
         }
     };
