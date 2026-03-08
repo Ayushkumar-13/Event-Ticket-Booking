@@ -1,37 +1,119 @@
 const asyncHandler = require('express-async-handler');
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
-const { ticketQueue } = require('../config/queue');
+const { notificationQueue } = require('../config/queue');
 
-// @desc    Book a ticket
+// @desc    Book a ticket (synchronous ticket creation + async email notification)
 // @route   POST /api/tickets/book
 // @access  Private
 const bookTicket = asyncHandler(async (req, res) => {
     const { eventId, quantity } = req.body;
-    const idempotencyKey = req.headers['idempotency-key'];
+
+    console.log("🎟️ [API POST /book] Received Payload:", req.body);
 
     if (!eventId || !quantity) {
         res.status(400);
-        throw new Error('Please add all fields');
+        throw new Error('Please provide eventId and quantity');
     }
 
-    // Dispatch the ticket purchase operation to the BullMQ message queue!
-    const job = await ticketQueue.add('process-ticket', {
-        eventId,
-        userId: req.user.id,
-        userEmail: req.user.email,
-        userName: req.user.name,
-        ticketCount: quantity,
+    const idempotencyKey = req.headers['idempotency-key'];
+
+    // --- IDEMPOTENCY CHECK ---
+    if (idempotencyKey) {
+        const existingTicket = await Ticket.findOne({ idempotencyKey });
+        if (existingTicket) {
+            console.log(`🔄 Idempotency key match! Returning existing ticket: ${existingTicket._id}`);
+            return res.status(200).json({
+                message: 'Ticket already booked',
+                ticketId: existingTicket._id,
+                status: 'success'
+            });
+        }
+    }
+
+    // --- FETCH EVENT ---
+    const event = await Event.findById(eventId);
+    if (!event) {
+        res.status(404);
+        throw new Error('Event not found');
+    }
+
+    if (event.availableTickets < quantity) {
+        res.status(400);
+        throw new Error('Not enough available tickets');
+    }
+
+    // --- ATOMIC UPDATE (Optimistic Concurrency Control) ---
+    const updatedEvent = await Event.findOneAndUpdate(
+        {
+            _id: eventId,
+            availableTickets: { $gte: quantity }
+        },
+        {
+            $inc: {
+                availableTickets: -quantity,
+                soldTickets: quantity
+            }
+        },
+        { new: true }
+    );
+
+    if (!updatedEvent) {
+        res.status(409);
+        throw new Error('Tickets were just sold out. Please try again.');
+    }
+
+    // --- CREATE TICKET IN DB (synchronously) ---
+    const ticket = await Ticket.create({
+        user: req.user.id,
+        event: eventId,
+        quantity,
+        status: 'Confirmed',
         idempotencyKey
     });
 
-    console.log(`[Queue] Added ticket registration job ${job.id} for user ${req.user.id}`);
+    console.log(`✅ [ticketController] Created Ticket ${ticket._id} for user ${req.user.id}`);
 
-    // Respond immediately with 202 Accepted, giving UI the jobId to poll
-    res.status(202).json({
-        message: 'Ticket purchase queued successfully',
-        jobId: job.id,
-        status: 'pending'
+    // --- INVALIDATE CACHE ---
+    try {
+        const redisClient = require('../config/redis');
+        if (redisClient.isOpen) {
+            await redisClient.del('events_all');
+        }
+    } catch (err) {
+        // Non-fatal
+    }
+
+    // --- BROADCAST REALTIME UPDATE ---
+    try {
+        const { getIO } = require('../socket');
+        const io = getIO();
+        io.emit('ticket_updated', {
+            eventId,
+            availableTickets: updatedEvent.availableTickets
+        });
+    } catch (socketErr) {
+        // Non-fatal
+    }
+
+    // --- QUEUE EMAIL (async, non-blocking) ---
+    try {
+        await notificationQueue.add('send-ticket-email', {
+            ticket: { _id: ticket._id, quantity: ticket.quantity, status: ticket.status, idempotencyKey: ticket.idempotencyKey },
+            event: { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price },
+            user: { id: req.user.id, email: req.user.email, name: req.user.name }
+        });
+        console.log(`📧 [ticketController] Email notification queued for ${req.user.email}`);
+    } catch (queueErr) {
+        console.warn('⚠️ Email notification could not be queued:', queueErr.message);
+        // Non-fatal — ticket is already saved, just log warning
+    }
+
+    // Respond with ticket details
+    res.status(201).json({
+        message: 'Ticket booked successfully',
+        ticketId: ticket._id,
+        status: 'success'
     });
 });
 
@@ -39,28 +121,15 @@ const bookTicket = asyncHandler(async (req, res) => {
 // @route   GET /api/tickets/user
 // @access  Private
 const getUserTickets = asyncHandler(async (req, res) => {
-    console.log("========================================");
-    console.log("📋 getUserTickets: Starting...");
-    console.log("📋 User ID:", req.user.id);
-    console.log("📋 User email:", req.user.email);
+    console.log("📋 getUserTickets: User ID:", req.user.id);
 
-    // Find all confirmed tickets for the user
     const tickets = await Ticket.find({
         user: req.user.id,
         status: 'Confirmed'
     }).populate('event', 'title date time location image price category');
 
     console.log("📋 Found tickets count:", tickets.length);
-    console.log("📋 Tickets data:", JSON.stringify(tickets, null, 2));
 
-    // Check if any tickets have null events
-    const ticketsWithoutEvent = tickets.filter(t => !t.event);
-    if (ticketsWithoutEvent.length > 0) {
-        console.warn("⚠️  Found tickets with deleted events:", ticketsWithoutEvent.length);
-    }
-
-    console.log("📋 Returning tickets to frontend");
-    console.log("========================================");
     res.status(200).json(tickets);
 });
 
@@ -68,14 +137,12 @@ const getUserTickets = asyncHandler(async (req, res) => {
 // @route   GET /api/tickets/booked-events
 // @access  Private
 const getBookedEventIds = asyncHandler(async (req, res) => {
-    console.log("Fetching booked event IDs for user:", req.user.id);
     const tickets = await Ticket.find({
         user: req.user.id,
         status: 'Confirmed'
     }).select('event');
 
     const eventIds = tickets.map(ticket => ticket.event.toString());
-    console.log("User has booked events:", eventIds);
     res.status(200).json(eventIds);
 });
 
@@ -83,11 +150,9 @@ const getBookedEventIds = asyncHandler(async (req, res) => {
 // @route   GET /api/tickets/organizer
 // @access  Private (Organizer)
 const getOrganizerTickets = asyncHandler(async (req, res) => {
-    // 1. Find all events created by this organizer
     const events = await Event.find({ organizer: req.user.id });
     const eventIds = events.map(event => event._id);
 
-    // 2. Find all tickets for these events
     const tickets = await Ticket.find({ event: { $in: eventIds } })
         .populate('user', 'name email')
         .populate('event', 'title date price')
