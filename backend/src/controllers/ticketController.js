@@ -1,9 +1,10 @@
 const asyncHandler = require('express-async-handler');
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
-const { notificationQueue } = require('../config/queue');
+const { generateTicketPDF } = require('../utils/pdfGenerator');
+const { sendTicketEmail } = require('../utils/emailSender');
 
-// @desc    Book a ticket (synchronous ticket creation + async email notification)
+// @desc    Book a ticket (synchronous ticket + email with PDF)
 // @route   POST /api/tickets/book
 // @access  Private
 const bookTicket = asyncHandler(async (req, res) => {
@@ -96,18 +97,33 @@ const bookTicket = asyncHandler(async (req, res) => {
         // Non-fatal
     }
 
-    // --- QUEUE EMAIL (async, non-blocking) ---
-    try {
-        await notificationQueue.add('send-ticket-email', {
-            ticket: { _id: ticket._id, quantity: ticket.quantity, status: ticket.status, idempotencyKey: ticket.idempotencyKey },
-            event: { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price },
-            user: { id: req.user.id, email: req.user.email, name: req.user.name }
-        });
-        console.log(`📧 [ticketController] Email notification queued for ${req.user.email}`);
-    } catch (queueErr) {
-        console.warn('⚠️ Email notification could not be queued:', queueErr.message);
-        // Non-fatal — ticket is already saved, just log warning
-    }
+    // --- SEND EMAIL WITH PDF DIRECTLY (non-blocking — won't affect ticket save on failure) ---
+    const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
+    const eventForEmail = {
+        title: updatedEvent.title,
+        location: updatedEvent.location,
+        date: updatedEvent.date,
+        time: updatedEvent.time,
+        price: updatedEvent.price,
+        category: updatedEvent.category
+    };
+    const ticketForEmail = {
+        _id: ticket._id,
+        quantity: ticket.quantity,
+        status: ticket.status,
+        idempotencyKey: ticket.idempotencyKey
+    };
+
+    setImmediate(async () => {
+        try {
+            console.log(`📧 [Email] Generating PDF for ticket ${ticket._id}...`);
+            const pdfBuffer = await generateTicketPDF(ticketForEmail, eventForEmail, userForEmail);
+            await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
+            console.log(`✅ [Email] Ticket email delivered to ${req.user.email}`);
+        } catch (emailErr) {
+            console.error(`❌ [Email] Failed to send ticket email:`, emailErr.message);
+        }
+    });
 
     // Respond with ticket details
     res.status(201).json({
