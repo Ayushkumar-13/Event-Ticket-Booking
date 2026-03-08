@@ -8,12 +8,17 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
     const { eventId, userId, ticketCount, idempotencyKey } = job.data;
     console.log(`[Worker] Picking up job ${job.id}: Processing ticket for user ${userId} to event ${eventId}`);
 
+    console.log(`\n================================`);
+    console.log(`[Worker Start] Picking up job ${job.id}`);
+    console.log(`[Worker Data] `, job.data);
+
     // --- IDEMPOTENCY KEY CHECK ---
     // Prevent double-charging during network drops or double-clicks
     if (idempotencyKey) {
+        console.log(`[Worker] Checking Idempotency Key: ${idempotencyKey}`);
         const existingTicket = await Ticket.findOne({ idempotencyKey });
         if (existingTicket) {
-            console.log("🔄 Idempotency key match! Returning already processed ticket.");
+            console.log(`[Worker] 🔄 Idempotency key match! Returning already processed ticket: ${existingTicket._id}`);
             return {
                 status: 'success',
                 ticketId: existingTicket._id
@@ -64,6 +69,7 @@ const ticketWorker = new Worker('ticket-processing', async (job) => {
         status: 'Confirmed',
         idempotencyKey // Store key to prevent future double processing
     });
+    console.log(`[Worker] ✅ Created Ticket ID: ${ticket._id} for user ${userId} !!`);
 
     // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
     if (redisClient.isOpen) {

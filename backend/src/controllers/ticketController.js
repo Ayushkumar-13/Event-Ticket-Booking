@@ -19,6 +19,8 @@ const bookTicket = asyncHandler(async (req, res) => {
     const job = await ticketQueue.add('process-ticket', {
         eventId,
         userId: req.user.id,
+        userEmail: req.user.email,
+        userName: req.user.name,
         ticketCount: quantity,
         idempotencyKey
     });
