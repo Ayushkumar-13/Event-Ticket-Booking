@@ -2,7 +2,9 @@ const nodemailer = require('nodemailer');
 
 const createTransporter = () => {
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: false, // TLS via STARTTLS
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
@@ -11,7 +13,7 @@ const createTransporter = () => {
 };
 
 /**
- * Sends a ticket confirmation email with PDF attached via Gmail SMTP
+ * Sends a ticket confirmation email with PDF attached via Brevo SMTP
  * @param {Object} user - { name, email }
  * @param {Object} event - { title, date, location, time, price }
  * @param {Buffer} pdfBuffer - Generated PDF ticket in memory
@@ -24,7 +26,7 @@ const sendTicketEmail = async (user, event, pdfBuffer) => {
   });
 
   const info = await transporter.sendMail({
-    from: `"EventTix" <${process.env.SMTP_USER}>`,
+    from: `"EventTix" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     replyTo: process.env.SMTP_USER,
     to: user.email,
     subject: `Your Booking Confirmation — ${event.title} | EventTix`,
