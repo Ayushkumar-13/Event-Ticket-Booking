@@ -56,8 +56,16 @@ const EventDetails = () => {
 
         // Note: Using dynamic import to avoid crashes if socket.io-client isn't fully installed yet
         let socket;
+        
+        // Vercel serverless functions do not support persistent WebSockets out-of-the-box.
+        // We disable it here to prevent continuous CORS polling errors in the console.
+        if (SOCKET_URL.includes('vercel.app')) {
+            console.warn("WebSocket disabled: Vercel production detected.");
+            return;
+        }
+
         import('socket.io-client').then(({ io }) => {
-            socket = io(SOCKET_URL);
+            socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
 
             socket.on('ticket_updated', (data) => {
                 // Only update the screen if the broadcasted ticket purchase was for THIS specific event

@@ -103,8 +103,8 @@ const Login = () => {
 
             <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
                 Don't have an account?{' '}
-                <Link to="/register" className="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
-                    Sign up
+                <Link to="/register" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500">
+                    Create User
                 </Link>
             </div>
 

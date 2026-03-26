@@ -23,6 +23,9 @@ const EventCard = ({ event, isBooked = false, index = 0 }) => {
                     <span className="bg-indigo-600 dark:bg-indigo-500 text-white text-xs px-3 py-1 rounded-full font-semibold shadow-lg">
                         {event.category}
                     </span>
+                    <span className={`text-white text-xs px-3 py-1 rounded-full font-semibold shadow-lg ${event.availableTickets > 0 ? 'bg-purple-600 dark:bg-purple-500' : 'bg-red-600 dark:bg-red-500'}`}>
+                        {event.availableTickets > 0 ? `Available ${event.availableTickets}` : 'Sold Out'}
+                    </span>
                     {isBooked && (
                         <span className="bg-green-500 dark:bg-green-600 text-white text-xs px-3 py-1 rounded-full font-semibold shadow-lg flex items-center gap-1">
                             <CheckCircle size={14} />

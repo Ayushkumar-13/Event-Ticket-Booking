@@ -69,7 +69,7 @@ const Navbar = () => {
                                     <Button variant="ghost">Log in</Button>
                                 </Link>
                                 <Link to="/register">
-                                    <Button>Sign up</Button>
+                                    <Button>Create User</Button>
                                 </Link>
                             </div>
                         )}
@@ -131,7 +131,7 @@ const Navbar = () => {
                                     <Button variant="ghost" className="w-full justify-start">Log in</Button>
                                 </Link>
                                 <Link to="/register" onClick={() => setMobileMenuOpen(false)} className="block w-full">
-                                    <Button className="w-full">Sign up</Button>
+                                    <Button className="w-full">Create User</Button>
                                 </Link>
                             </div>
                         )}

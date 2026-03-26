@@ -23,9 +23,13 @@ const EventDetails = ({ event }) => {
                     <Badge variant="primary">
                         {event.category}
                     </Badge>
-                    {event.availableTickets < 20 && (
+                    {event.availableTickets > 0 ? (
+                        <Badge variant={event.availableTickets < 20 ? "danger" : "success"}>
+                            Available {event.availableTickets}
+                        </Badge>
+                    ) : (
                         <Badge variant="danger">
-                            Only {event.availableTickets} tickets left!
+                            Sold Out!
                         </Badge>
                     )}
                 </div>

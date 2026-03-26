@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { EventProvider } from './context/EventContext';
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -35,6 +35,15 @@ import 'aos/dist/aos.css';
 // HOC
 import ProtectedRoute from './components/common/ProtectedRoute';
 
+// Forces unauthenticated new users directly to the Registration page
+const LandingRedirect = ({ children }) => {
+  const { user } = useAuth();
+  if (!user) {
+    return <Navigate to="/register" replace />;
+  }
+  return children;
+};
+
 function App() {
   React.useEffect(() => {
     AOS.init({
@@ -53,7 +62,7 @@ function App() {
             <Routes>
               {/* Public Routes with User Layout (Navbar + Footer) */}
               <Route element={<UserLayout />}>
-                <Route path="/" element={<PublicEventPage />} />
+                <Route path="/" element={<LandingRedirect><PublicEventPage /></LandingRedirect>} />
                 <Route path="/event/:id" element={<EventDetails />} />
                 <Route path="/booking-success" element={<RegistrationSuccess />} />
               </Route>
