@@ -8,11 +8,9 @@ const Footer = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
                     <div className="col-span-1 md:col-span-1">
-                        <Link to="/" className="flex items-center gap-2 mb-4">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-bold text-lg">
-                                E
-                            </div>
-                            <span className="font-bold text-xl text-gray-900 dark:text-gray-100 tracking-tight">EventTix</span>
+                        <Link to="/" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2 mb-4 group">
+                            <img src="/eventtix-logo.svg" alt="EventTix Logo" className="w-8 h-8 drop-shadow-sm transition-transform duration-200 group-hover:scale-110" />
+                            <span className="font-bold text-xl text-gray-900 dark:text-gray-100 tracking-tight transition-colors duration-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">EventTix</span>
                         </Link>
                         <p className="text-gray-500 dark:text-gray-400 text-sm">
                             Discover and book the best events in your city. Music, Art, Tech, and more.
@@ -52,7 +50,6 @@ const Footer = () => {
 
                 <div className="border-t border-gray-100 dark:border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500 dark:text-gray-400">
                     <p>&copy; {new Date().getFullYear()} EventTix. All rights reserved.</p>
-                    <p>Made with ❤️ for Intern Assignment</p>
                 </div>
             </div>
         </footer>

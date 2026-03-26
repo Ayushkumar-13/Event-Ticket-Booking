@@ -13,7 +13,7 @@ const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379'
     retryStrategy(times) {
         if (times > 3) {
             if (!bullmqWarned) {
-                console.warn('⚠️ BullMQ Redis connection failed. Queue processing will be paused.');
+                // Silently pause queue processing without logging warnings to the terminal
                 bullmqWarned = true;
             }
             return null; // Stop retrying

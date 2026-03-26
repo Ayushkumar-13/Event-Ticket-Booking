@@ -12,8 +12,8 @@ const redisClient = redis.createClient({
             // Give up after 3 tries if Redis is completely unavailable
             // This allows the app to fallback to just using MongoDB without crashing
             if (retries > 3) {
-                console.warn('⚠️ Redis connection failed. Proceeding without caching layer.');
-                redisClient.removeAllListeners('error'); // stop emitting raw errors to uncaught process scope
+                // Silently fallback to MongoDB without logging warnings to the terminal
+                redisClient.removeAllListeners('error');
                 return new Error('Redis retry exhausted');
             }
             return Math.min(retries * 50, 1000);

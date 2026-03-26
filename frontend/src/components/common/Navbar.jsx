@@ -21,11 +21,9 @@ const Navbar = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between h-16">
                     <div className="flex items-center">
-                        <Link to="/" className="flex-shrink-0 flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center text-white font-bold text-lg">
-                                E
-                            </div>
-                            <span className="font-bold text-xl text-gray-900 dark:text-gray-100 tracking-tight">EventTix</span>
+                        <Link to="/" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex-shrink-0 flex items-center gap-2 group">
+                            <img src="/eventtix-logo.svg" alt="EventTix Logo" className="w-8 h-8 drop-shadow-sm transition-transform duration-200 group-hover:scale-110" />
+                            <span className="font-bold text-xl text-gray-900 dark:text-gray-100 tracking-tight transition-colors duration-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">EventTix</span>
                         </Link>
                     </div>
 
