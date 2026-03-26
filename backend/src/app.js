@@ -1,17 +1,3 @@
-/*
- * ===================================================================
- * CORRECTED app.js FILE
- * ===================================================================
- * 
- * INSTRUCTIONS:
- * 1. Copy this ENTIRE file
- * 2. Replace your current app.js at:
- *    E:\Intern Assignment\Event Ticketing app\backend\src\app.js
- * 3. Save and restart server: npm run dev
- * 
- * ===================================================================
- */
-
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');

@@ -1,21 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const {
-    createRegistration,
     getEventRegistrations,
-    updateRegistrationStatus,
     getRegistrationById,
-    checkJobStatus
+    updateRegistrationStatus
 } = require('../controllers/registrationController');
 const { protect } = require('../middlewares/authMiddleware');
 
-// Public routes
-router.post('/', createRegistration);
-router.get('/status/:jobId', checkJobStatus);
-router.get('/:id', getRegistrationById);
-
-// Protected routes (Organizer only)
+// Protected routes
 router.get('/event/:eventId', protect, getEventRegistrations);
+router.get('/:id', protect, getRegistrationById);
 router.patch('/:id/status', protect, updateRegistrationStatus);
 
 module.exports = router;

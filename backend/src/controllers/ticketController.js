@@ -3,8 +3,9 @@ const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
 const { generateTicketPDF } = require('../utils/pdfGenerator');
 const { sendTicketEmail } = require('../utils/emailSender');
+const { invalidateEventCache } = require('../utils/cacheHelper');
 
-// @desc    Book a ticket (synchronous ticket + email with PDF)
+// @desc    Book a ticket
 // @route   POST /api/tickets/book
 // @access  Private
 const bookTicket = asyncHandler(async (req, res) => {
@@ -20,6 +21,7 @@ const bookTicket = asyncHandler(async (req, res) => {
     const idempotencyKey = req.headers['idempotency-key'];
 
     // --- IDEMPOTENCY CHECK ---
+    // Prevents double-booking on network retries or accidental double-clicks
     if (idempotencyKey) {
         const existingTicket = await Ticket.findOne({ idempotencyKey });
         if (existingTicket) {
@@ -45,6 +47,8 @@ const bookTicket = asyncHandler(async (req, res) => {
     }
 
     // --- ATOMIC UPDATE (Optimistic Concurrency Control) ---
+    // Uses $gte to guard against a race condition where another request
+    // snaps up the last tickets between our check and our update.
     const updatedEvent = await Event.findOneAndUpdate(
         {
             _id: eventId,
@@ -64,7 +68,7 @@ const bookTicket = asyncHandler(async (req, res) => {
         throw new Error('Tickets were just sold out. Please try again.');
     }
 
-    // --- CREATE TICKET IN DB (synchronously) ---
+    // --- CREATE TICKET RECORD ---
     const ticket = await Ticket.create({
         user: req.user.id,
         event: eventId,
@@ -76,14 +80,7 @@ const bookTicket = asyncHandler(async (req, res) => {
     console.log(`✅ [ticketController] Created Ticket ${ticket._id} for user ${req.user.id}`);
 
     // --- INVALIDATE CACHE ---
-    try {
-        const redisClient = require('../config/redis');
-        if (redisClient.isOpen) {
-            await redisClient.del('events_all');
-        }
-    } catch (err) {
-        // Non-fatal
-    }
+    await invalidateEventCache();
 
     // --- BROADCAST REALTIME UPDATE ---
     try {
@@ -94,10 +91,10 @@ const bookTicket = asyncHandler(async (req, res) => {
             availableTickets: updatedEvent.availableTickets
         });
     } catch (socketErr) {
-        // Non-fatal
+        // Non-fatal — real-time update best-effort
     }
 
-    // --- SEND EMAIL WITH PDF DIRECTLY (non-blocking — won't affect ticket save on failure) ---
+    // --- SEND EMAIL WITH PDF (non-blocking — won't fail the booking) ---
     const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
     const eventForEmail = {
         title: updatedEvent.title,
@@ -125,7 +122,6 @@ const bookTicket = asyncHandler(async (req, res) => {
         }
     });
 
-    // Respond with ticket details
     res.status(201).json({
         message: 'Ticket booked successfully',
         ticketId: ticket._id,
@@ -133,7 +129,7 @@ const bookTicket = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Get user tickets
+// @desc    Get user's tickets
 // @route   GET /api/tickets/user
 // @access  Private
 const getUserTickets = asyncHandler(async (req, res) => {
@@ -149,7 +145,7 @@ const getUserTickets = asyncHandler(async (req, res) => {
     res.status(200).json(tickets);
 });
 
-// @desc    Get user's booked event IDs
+// @desc    Get user's booked event IDs (for UI state — e.g. hiding "Book" button)
 // @route   GET /api/tickets/booked-events
 // @access  Private
 const getBookedEventIds = asyncHandler(async (req, res) => {
@@ -162,7 +158,7 @@ const getBookedEventIds = asyncHandler(async (req, res) => {
     res.status(200).json(eventIds);
 });
 
-// @desc    Get tickets for organizer's events
+// @desc    Get all tickets for events owned by the organizer
 // @route   GET /api/tickets/organizer
 // @access  Private (Organizer)
 const getOrganizerTickets = asyncHandler(async (req, res) => {

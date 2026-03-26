@@ -1,133 +1,42 @@
+/**
+ * ticketWorker.js
+ *
+ * NOTE: The synchronous ticket booking flow now lives entirely in
+ * ticketController.js (POST /api/tickets/book), which handles:
+ *   - Idempotency checks
+ *   - Atomic ticket reservation (OCC)
+ *   - Redis cache invalidation
+ *   - Socket.IO realtime broadcast
+ *   - PDF generation + confirmation email (via setImmediate)
+ *
+ * This file is kept so the 'ticket-processing' BullMQ queue can be monitored
+ * (e.g. via Bull Board) and so the queue infrastructure stays intact for any
+ * future async jobs that genuinely need background processing.
+ */
+
 const { Worker } = require('bullmq');
 const { connection } = require('../config/queue');
-const Event = require('../models/Event');
-const Ticket = require('../models/Ticket');
-const redisClient = require('../config/redis');
 
 const ticketWorker = new Worker('ticket-processing', async (job) => {
-    const { eventId, userId, ticketCount, idempotencyKey } = job.data;
-    console.log(`[Worker] Picking up job ${job.id}: Processing ticket for user ${userId} to event ${eventId}`);
-
-    console.log(`\n================================`);
-    console.log(`[Worker Start] Picking up job ${job.id}`);
-    console.log(`[Worker Data] `, job.data);
-
-    // --- IDEMPOTENCY KEY CHECK ---
-    // Prevent double-charging during network drops or double-clicks
-    if (idempotencyKey) {
-        console.log(`[Worker] Checking Idempotency Key: ${idempotencyKey}`);
-        const existingTicket = await Ticket.findOne({ idempotencyKey });
-        if (existingTicket) {
-            console.log(`[Worker] 🔄 Idempotency key match! Returning already processed ticket: ${existingTicket._id}`);
-            return {
-                status: 'success',
-                ticketId: existingTicket._id
-            };
-        }
-    }
-
-    const event = await Event.findById(eventId);
-
-    if (!event) {
-        throw new Error(`Event ${eventId} not found`);
-    }
-
-    if (event.availableTickets < ticketCount) {
-        throw new Error(`Not enough available tickets for event ${eventId}`);
-    }
-
-    // Simulate a Payment Gateway delay to showcase async capability (e.g. Stripe)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // --- OPTIMISTIC CONCURRENCY CONTROL (OCC) ---
-    // Atomic update using versioning to prevent double-booking race condition
-    const updatedEvent = await Event.findOneAndUpdate(
-        {
-            _id: eventId,
-            __v: event.__v || 0, // The precise version we just read
-            availableTickets: { $gte: ticketCount } // Ensure tickets didn't drop below our requested quantity
-        },
-        {
-            $inc: {
-                availableTickets: -ticketCount,
-                soldTickets: ticketCount,
-                __v: 1 // Atomically increment the document version
-            }
-        },
-        { new: true } // Return the updated document to confirm success
-    );
-
-    if (!updatedEvent) {
-        throw new Error('High demand! Tickets were purchased by another user while you were booking. Please try again.');
-    }
-
-    // Now definitely safe to create the ticket
-    const ticket = await Ticket.create({
-        user: userId,
-        event: eventId,
-        quantity: ticketCount,
-        status: 'Confirmed',
-        idempotencyKey // Store key to prevent future double processing
-    });
-    console.log(`[Worker] ✅ Created Ticket ID: ${ticket._id} for user ${userId} !!`);
-
-    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
-    if (redisClient.isOpen) {
-        await redisClient.del('events_all');
-        console.log("🧹 [Redis Worker] Invalidated 'events_all' cache due to ticket purchase.");
-    }
-
-    // --- FEATURE 8: ASYNCHRONOUS BACKGROUND NOTIFICATIONS ---
-    // Push the heavy PDF generation and slow SMTP email sending to a separate worker
-    // to prevent the ticket-processing line from getting backed up.
-    const { notificationQueue } = require('../config/queue');
-    await notificationQueue.add('send-ticket-email', {
-        ticket,
-        event: updatedEvent,
-        user: { id: userId, email: job.data.userEmail, name: job.data.userName }
-    });
-
-    // --- FEATURE 9: REAL-TIME DATA (WEBSOCKETS) ---
-    // Broadcast the new available ticket count to all users instantly 
-    // to update their UI without a page refresh!
-    try {
-        const { getIO } = require('../socket');
-        const io = getIO();
-        io.emit('ticket_updated', {
-            eventId: eventId,
-            availableTickets: updatedEvent.availableTickets
-        });
-        console.log(`🔌 [Socket.IO] Broadcasted new available tickets (${updatedEvent.availableTickets}) for event ${eventId}`);
-    } catch (socketErr) {
-        console.error('Socket emission failed:', socketErr.message);
-    }
-
-    console.log(`[Worker] Job ${job.id} SUCCESS: Created ticket ${ticket._id}`);
-
-    // Return data for the polling endpoint
-    return {
-        status: 'success',
-        ticketId: ticket._id
-    };
-
+    console.log(`[Ticket Worker] Job ${job.id} acknowledged — booking is handled synchronously by ticketController.`);
+    return { status: 'skipped', reason: 'Booking handled by ticketController directly' };
 }, {
     connection,
-    concurrency: 5 // Process up to 5 ticket purchases simultaneously
+    concurrency: 5
 });
 
-// Worker error handlers
 ticketWorker.on('error', (err) => {
-    // Catch worker-level network disconnects so they don't blow up the console
     if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET') && !err.message.includes('ETIMEDOUT')) {
-        console.error('BullMQ Worker Connection Error:', err.message);
+        console.error('BullMQ Ticket Worker Error:', err.message);
     }
 });
 
 ticketWorker.on('failed', (job, err) => {
-    console.error(`[BullMQ Worker] Job ${job?.id} failed with error ${err.message}`);
+    console.error(`[Ticket Worker] Job ${job?.id} failed: ${err.message}`);
 });
+
 ticketWorker.on('completed', (job) => {
-    console.log(`[BullMQ Worker] Job ${job?.id} perfectly processed.`);
+    console.log(`✅ [Ticket Worker] Job ${job?.id} acknowledged.`);
 });
 
 module.exports = ticketWorker;

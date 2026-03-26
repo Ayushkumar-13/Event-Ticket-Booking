@@ -1,9 +1,9 @@
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const emailValidator = require('deep-email-validator');
 const { sendWelcomeEmail, sendLoginAlertEmail } = require('../utils/emailSender');
+const { generateToken } = require('../utils/generateToken');
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -102,10 +102,5 @@ const loginUser = asyncHandler(async (req, res) => {
 const getMe = asyncHandler(async (req, res) => {
     res.status(200).json(req.user);
 });
-
-// Generate JWT
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-};
 
 module.exports = { registerUser, loginUser, getMe };

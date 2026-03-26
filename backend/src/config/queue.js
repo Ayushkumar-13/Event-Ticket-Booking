@@ -4,6 +4,7 @@ require('dotenv').config();
 
 // Create a dedicated Redis connection for BullMQ using ioredis
 const isRediss = process.env.REDIS_URI && process.env.REDIS_URI.startsWith('rediss://');
+let bullmqWarned = false;
 const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
@@ -11,7 +12,10 @@ const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379'
     tls: isRediss ? { rejectUnauthorized: false } : undefined,
     retryStrategy(times) {
         if (times > 3) {
-            console.warn('⚠️ BullMQ Redis connection failed. Queue processing will be paused.');
+            if (!bullmqWarned) {
+                console.warn('⚠️ BullMQ Redis connection failed. Queue processing will be paused.');
+                bullmqWarned = true;
+            }
             return null; // Stop retrying
         }
         return Math.min(times * 50, 1000); // Reconnect after this time

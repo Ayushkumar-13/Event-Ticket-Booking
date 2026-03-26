@@ -1,8 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const Event = require('../models/Event');
-const User = require('../models/User');
-
+const Ticket = require('../models/Ticket');
 const redisClient = require('../config/redis');
+const { invalidateEventCache } = require('../utils/cacheHelper');
 
 // @desc    Get all events
 // @route   GET /api/events
@@ -77,13 +77,7 @@ const createEvent = asyncHandler(async (req, res) => {
     }
 
     const event = await Event.create(eventData);
-
-    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
-    // Clear the cache because a new event has been added
-    if (redisClient.isOpen) {
-        await redisClient.del('events_all');
-        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event creation.");
-    }
+    await invalidateEventCache();
 
     res.status(201).json(event);
 });
@@ -99,16 +93,9 @@ const updateEvent = asyncHandler(async (req, res) => {
         throw new Error('Event not found');
     }
 
-    // Check for user
-    if (!req.user) {
-        res.status(401);
-        throw new Error('User not found');
-    }
-
-    // Make sure the logged in user matches the event organizer
     if (event.organizer.toString() !== req.user.id) {
-        res.status(401);
-        throw new Error('User not authorized');
+        res.status(403);
+        throw new Error('Forbidden: You are not the organizer of this event');
     }
 
     const eventData = { ...req.body };
@@ -117,15 +104,8 @@ const updateEvent = asyncHandler(async (req, res) => {
         eventData.image = req.file.path;
     }
 
-    const updatedEvent = await Event.findByIdAndUpdate(req.params.id, eventData, {
-        new: true,
-    });
-
-    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
-    if (redisClient.isOpen) {
-        await redisClient.del('events_all');
-        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event update.");
-    }
+    const updatedEvent = await Event.findByIdAndUpdate(req.params.id, eventData, { new: true });
+    await invalidateEventCache();
 
     res.status(200).json(updatedEvent);
 });
@@ -141,25 +121,13 @@ const deleteEvent = asyncHandler(async (req, res) => {
         throw new Error('Event not found');
     }
 
-    // Check for user
-    if (!req.user) {
-        res.status(401);
-        throw new Error('User not found');
-    }
-
-    // Make sure the logged in user matches the event organizer
     if (event.organizer.toString() !== req.user.id) {
-        res.status(401);
-        throw new Error('User not authorized');
+        res.status(403);
+        throw new Error('Forbidden: You are not the organizer of this event');
     }
 
     await event.deleteOne();
-
-    // --- DISTRIBUTED CACHING LAYER: Invalidate Cache ---
-    if (redisClient.isOpen) {
-        await redisClient.del('events_all');
-        console.log("🧹 [Redis] Invalidated 'events_all' cache due to event deletion.");
-    }
+    await invalidateEventCache();
 
     res.status(200).json({ id: req.params.id });
 });
@@ -168,41 +136,44 @@ const deleteEvent = asyncHandler(async (req, res) => {
 // @route   GET /api/events/stats
 // @access  Private (Organizer)
 const getDashboardStats = asyncHandler(async (req, res) => {
-    // 1. Get all events by this organizer
     const events = await Event.find({ organizer: req.user.id });
     const eventIds = events.map(event => event._id);
-
-    // 2. Count total events
     const totalEvents = events.length;
 
-    // 3. Calculate total registrations & revenue
-    // We need to import Registration model (lazy load or top level)
-    const Registration = require('../models/Registration');
-
-    const stats = await Registration.aggregate([
+    // Aggregate stats from the Ticket model
+    const stats = await Ticket.aggregate([
         {
             $match: {
                 event: { $in: eventIds },
-                status: 'confirmed'
+                status: 'Confirmed'
             }
+        },
+        {
+            $lookup: {
+                from: 'events',
+                localField: 'event',
+                foreignField: '_id',
+                as: 'eventDetails'
+            }
+        },
+        {
+            $unwind: '$eventDetails'
         },
         {
             $group: {
                 _id: null,
-                totalAttendees: { $sum: "$ticketCount" },
-                totalRevenue: { $sum: "$totalAmount" }
+                totalAttendees: { $sum: '$quantity' },
+                totalRevenue: { $sum: { $multiply: ['$quantity', '$eventDetails.price'] } }
             }
         }
     ]);
 
-    const result = {
+    res.status(200).json({
         totalEvents,
         totalAttendees: stats[0]?.totalAttendees || 0,
         totalRevenue: stats[0]?.totalRevenue || 0,
         avgAttendance: totalEvents > 0 ? Math.round((stats[0]?.totalAttendees || 0) / totalEvents) : 0
-    };
-
-    res.status(200).json(result);
+    });
 });
 
 module.exports = {
