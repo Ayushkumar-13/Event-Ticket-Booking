@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 
 const createTransporter = () => {
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: false, // TLS via STARTTLS
     auth: {
@@ -64,7 +64,7 @@ const sendTicketEmail = async (user, event, pdfBuffer) => {
     }]
   });
 
-  console.log(`✅ [Email] Ticket sent to ${user.email} via Brevo SMTP | ID: ${info.messageId}`);
+  console.log(`✅ [Email] Ticket sent to ${user.email} | ID: ${info.messageId}`);
   return info;
 };
 
