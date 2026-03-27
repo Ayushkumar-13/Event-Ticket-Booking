@@ -117,6 +117,19 @@ const bookTicket = asyncHandler(async (req, res) => {
             const pdfBuffer = await generateTicketPDF(ticketForEmail, eventForEmail, userForEmail);
             await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
             console.log(`✅ [Email] Ticket email delivered to ${req.user.email}`);
+
+            // Broadcast email notification to the user
+            try {
+                const { getIO } = require('../socket');
+                const io = getIO();
+                io.emit('email_sent', {
+                    userId: req.user.id,
+                    title: 'Ticket Confirmed! 🎟️',
+                    body: `Your ticket for ${updatedEvent.title} has been booked and PDF sent to your email.`
+                });
+            } catch (socketErr) {
+                console.error("Socket emit failed for email_sent", socketErr);
+            }
         } catch (emailErr) {
             console.error(`❌ [Email] Failed to send ticket email:`, emailErr.message);
         }
