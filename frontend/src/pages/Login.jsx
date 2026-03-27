@@ -108,13 +108,7 @@ const Login = () => {
                 </Link>
             </div>
 
-            <div className="mt-4 text-center">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">For testing:</p>
-                <div className="text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                    user@example.com / password123 <br />
-                    organizer@example.com / password123
-                </div>
-            </div>
+          
         </Card>
     );
 };
