@@ -113,8 +113,11 @@ const ViewTicket = () => {
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                            Showing {tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
+                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-4 font-medium flex items-center justify-between">
+                            <span>Showing {tickets.length} booking{tickets.length !== 1 ? 's' : ''}</span>
+                            <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 py-1 px-3 rounded-full">
+                                {tickets.reduce((sum, t) => sum + (t.quantity || 1), 0)} Total Tickets
+                            </span>
                         </div>
                         {tickets.map((ticket, index) => (
                             <TicketCard key={ticket._id || index} ticket={ticket} />

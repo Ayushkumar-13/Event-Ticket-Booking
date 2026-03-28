@@ -77,7 +77,7 @@ const Register = () => {
                 />
 
                 <Input
-                    label="Password"
+                    label="Create Password"
                     name="password"
                     type="password"
                     value={formData.password}
