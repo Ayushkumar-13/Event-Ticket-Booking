@@ -31,26 +31,38 @@ const ChatAssistant = () => {
         const userMessage = input.trim();
         const currentHistory = [...messages];
         
+        if (!user || !user.token) {
+            console.error('❌ [Chat] No valid session token found. Please re-login.');
+            setMessages(prev => [...prev, { role: 'ai', text: 'Your session has expired. Please log in again to use the AI Assistant.' }]);
+            return;
+        }
+
         setMessages([...currentHistory, { role: 'user', text: userMessage }]);
         setInput('');
         setIsTyping(true);
 
         try {
-            // We use the full API URL based on proxy or relative URL
-            // Assuming axios defaults or relative requests work.
+            console.log('📤 [Chat] Sending request to AI backend...');
             const res = await axios.post('http://localhost:5000/api/chat', {
                 message: userMessage,
                 previousHistory: currentHistory.slice(1) // skip the initial greeting
             }, {
-                // Ensure auth token is sent
                 headers: { Authorization: `Bearer ${user.token}` }
             });
 
             setMessages(prev => [...prev, { role: 'ai', text: res.data.responseText }]);
+            console.log('📥 [Chat] AI response received successfully.');
         } catch (error) {
-            console.error('Chat error:', error);
-            const errorMsg = error.response?.data?.message || "Sorry, I'm having trouble connecting right now.";
-            setMessages(prev => [...prev, { role: 'ai', text: `Error: ${errorMsg}` }]);
+            console.error('❌ [Chat] Assistant error:', error.response?.data || error.message);
+            
+            let displayError = "Sorry, I'm having trouble connecting right now.";
+            if (error.response?.status === 401) {
+                displayError = "Your session is invalid or expired. Please try logging in again.";
+            } else if (error.response?.data?.message) {
+                displayError = error.response.data.message;
+            }
+            
+            setMessages(prev => [...prev, { role: 'ai', text: `Error: ${displayError}` }]);
         } finally {
             setIsTyping(false);
         }
