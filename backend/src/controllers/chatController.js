@@ -11,7 +11,7 @@ const { invalidateEventCache } = require('../utils/cacheHelper');
 // @access  Private
 const handleChat = asyncHandler(async (req, res) => {
     const { message, previousHistory = [] } = req.body;
-    
+
     if (!message) {
         res.status(400);
         throw new Error('Message is required');
@@ -27,10 +27,10 @@ const handleChat = asyncHandler(async (req, res) => {
     console.log(`🤖 [Gemini] Using API Key: ${key.substring(0, 4)}...${key.substring(key.length - 4)} (Length: ${key.length})`);
 
     const genAI = new GoogleGenerativeAI(key);
-    console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash...");
-    
+    console.log("🤖 [Gemini] Initializing model: gemini-2.5-flash...");
+
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash", // ✅ Fixed: updated from deprecated gemini-1.5-flash
         systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users. If a user asks to book tickets but you don't know the exact Event ID, search for the event first, show them the options, and ask for confirmation before booking. If they provide enough detail that uniquely identifies an event, you can book it directly using the bookTickets tool. Always be polite and conversational. If you book successfully, tell the user their Ticket ID.",
         tools: [{
             functionDeclarations: [
@@ -70,10 +70,10 @@ const handleChat = asyncHandler(async (req, res) => {
     try {
         console.log(`🤖 [Gemini] Starting chat session with ${formattedHistory.length} history items...`);
         const chat = model.startChat({ history: formattedHistory });
-        
+
         console.log(`🤖 [Gemini] Sending message: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
         let result = await chat.sendMessage(message);
-        
+
         // Safety check for empty or blocked responses
         if (!result.response || !result.response.candidates || result.response.candidates.length === 0) {
             return res.status(200).json({
@@ -88,7 +88,7 @@ const handleChat = asyncHandler(async (req, res) => {
         while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
             const call = functionCalls[0];
             console.log(`🤖 [Gemini Tool] Executing: ${call.name} with args:`, call.args);
-            
+
             let functionResponseData = {};
 
             if (call.name === "searchEvents") {
@@ -104,14 +104,14 @@ const handleChat = asyncHandler(async (req, res) => {
                 if (maxPrice) filter.price = { $lte: maxPrice };
 
                 const events = await Event.find(filter).limit(5).select('_id title date time price location category availableTickets');
-                functionResponseData = { 
-                    status: "success", 
-                    results: events.length > 0 ? events : "No events found matching criteria." 
+                functionResponseData = {
+                    status: "success",
+                    results: events.length > 0 ? events : "No events found matching criteria."
                 };
-            } 
+            }
             else if (call.name === "bookTickets") {
                 const { eventId, quantity } = call.args;
-                
+
                 try {
                     console.log(`🤖 [Gemini Tool] AI-Initiated Booking for ${eventId} | Quantity: ${quantity}...`);
                     const event = await Event.findById(eventId);
@@ -141,7 +141,7 @@ const handleChat = asyncHandler(async (req, res) => {
                         const { getIO } = require('../socket');
                         const io = getIO();
                         io.emit('ticket_updated', { eventId, availableTickets: updatedEvent.availableTickets });
-                    } catch (e) {}
+                    } catch (e) { }
 
                     // Email with Trace Logs (Matches ticketController logic)
                     const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
@@ -158,12 +158,12 @@ const handleChat = asyncHandler(async (req, res) => {
                         }
                     });
 
-                    functionResponseData = { 
-                        status: "success", 
-                        message: `Successfully booked ${quantity} tickets! Ticket ID: ${ticket._id}. An e-ticket has been sent to your email.` 
+                    functionResponseData = {
+                        status: "success",
+                        message: `Successfully booked ${quantity} tickets! Ticket ID: ${ticket._id}. An e-ticket has been sent to your email.`
                     };
                 } catch (err) {
-                    console.error(`❌ [Gemini Tool] AI Booking Error:`, err.message);
+                    console.error(`❌ [Gemini Tool] AI Booking Error❌:`, err.message);
                     functionResponseData = { status: "error", error: err.message };
                 }
             }
