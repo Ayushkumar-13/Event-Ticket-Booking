@@ -16,7 +16,8 @@ export const AuthProvider = ({ children }) => {
                 try {
                     // Verify with backend
                     const userData = await getMe();
-                    setUser(userData);
+                    // Merge token into userData for consistent state
+                    setUser({ ...userData, token });
                 } catch (error) {
                     console.error("Session invalid:", error);
                     localStorage.removeItem('token');
@@ -34,9 +35,8 @@ export const AuthProvider = ({ children }) => {
         try {
             const data = await loginUser(email, password);
             localStorage.setItem('token', data.token);
-            // The backend returns a flat object with user info and token
+            // DO NOT delete the token, keep it in the user state!
             const userObj = { ...data };
-            delete userObj.token; // Optional: remove token from user object in state
             localStorage.setItem('user', JSON.stringify(userObj));
             setUser(userObj);
             return { success: true };
@@ -60,9 +60,8 @@ export const AuthProvider = ({ children }) => {
             console.log("🔐 AuthContext: Token saved to localStorage");
 
             const userObj = { ...data };
-            delete userObj.token;
             localStorage.setItem('user', JSON.stringify(userObj));
-            console.log("🔐 AuthContext: User saved to localStorage:", userObj);
+            console.log("🔐 AuthContext: User saved to localStorage with token:", userObj.token ? "YES" : "NO");
 
             setUser(userObj);
             console.log("🔐 AuthContext: User state updated");
