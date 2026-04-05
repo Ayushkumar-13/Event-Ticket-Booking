@@ -46,6 +46,7 @@ const registerUser = asyncHandler(async (req, res) => {
         // Send welcome email (non-blocking — doesn't affect registration response)
         setImmediate(async () => {
             try {
+                console.log(`🔍 [Auth] Registration success for ${user.email}, triggering welcome email...`);
                 await sendWelcomeEmail({ name: user.name, email: user.email });
             } catch (err) {
                 console.error('⚠️ Welcome email failed:', err.message);
@@ -77,6 +78,7 @@ const loginUser = asyncHandler(async (req, res) => {
         // Send login alert email (non-blocking)
         setImmediate(async () => {
             try {
+                console.log(`🔍 [Auth] Login success for ${user.email}, triggering login alert...`);
                 await sendLoginAlertEmail({ name: user.name, email: user.email });
             } catch (err) {
                 console.error('⚠️ Login alert email failed:', err.message);

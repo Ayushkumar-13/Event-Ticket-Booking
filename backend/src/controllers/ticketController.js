@@ -95,7 +95,13 @@ const bookTicket = asyncHandler(async (req, res) => {
     }
 
     // --- SEND EMAIL WITH PDF (non-blocking — won't fail the booking) ---
-    const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
+    const userForEmail = { 
+        id: req.user.id, 
+        email: req.user.email, 
+        name: req.user.name 
+    };
+    console.log(`🔍 [Ticket] Preparing email for: ${userForEmail.email} (${userForEmail.name})`);
+
     const eventForEmail = {
         title: updatedEvent.title,
         location: updatedEvent.location,
@@ -104,6 +110,7 @@ const bookTicket = asyncHandler(async (req, res) => {
         price: updatedEvent.price,
         category: updatedEvent.category
     };
+    
     const ticketForEmail = {
         _id: ticket._id,
         quantity: ticket.quantity,

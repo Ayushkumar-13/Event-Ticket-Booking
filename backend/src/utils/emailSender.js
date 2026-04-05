@@ -4,17 +4,32 @@ const nodemailer = require('nodemailer');
  * Creates a robust transporter for Gmail with improved reliability
  */
 const createTransporter = () => {
-    return nodemailer.createTransport({
-        service: 'gmail', // 🚀 Using 'service' simplifies the config for Gmail
+    console.log("📡 [Email] Initializing SMTP transporter...");
+    
+    // Using explicit configuration for maximum reliability
+    const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, // true for 465, false for 587
         auth: {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS
         },
-        // Force STARTTLS for better security if available
         tls: {
-            rejectUnauthorized: false
+            rejectUnauthorized: false // 🛡️ Crucial for many environments
         }
     });
+
+    // Test the connection immediately (Async)
+    transporter.verify((error, success) => {
+        if (error) {
+            console.error("❌ [Email] SMTP Connection Error:", error.message);
+        } else {
+            console.log("✅ [Email] SMTP Server is ready to take our messages");
+        }
+    });
+
+    return transporter;
 };
 
 /**
@@ -100,6 +115,7 @@ const sendTicketEmail = async (user, event, pdfBuffer) => {
     </body>
     </html>`;
 
+    console.log(`📤 [Email] Sending Ticket Email to ${user.email}...`);
     const info = await transporter.sendMail({
         from: `"EventTix" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
         to: user.email,
@@ -191,6 +207,7 @@ const sendWelcomeEmail = async (user) => {
     </body>
     </html>`;
 
+    console.log(`📤 [Email] Sending Welcome Email to ${user.email}...`);
     const info = await transporter.sendMail({
         from: `"EventTix" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
         to: user.email,
