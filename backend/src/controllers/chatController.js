@@ -61,109 +61,140 @@ const handleChat = asyncHandler(async (req, res) => {
         parts: [{ text: msg.text }]
     }));
 
-    const chat = model.startChat({ history: formattedHistory });
-    let result = await chat.sendMessage(message);
-    
-    // Check if the model decided to call a function
-    let functionCalls = result.response.functionCalls();
-    
-    // Some loops might need up to 2 calls (e.g. search -> book)
-    // We will do a simple while loop to resolve function calls
-    let turnCount = 0;
-    while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
-        const call = functionCalls[0];
-        console.log(`🤖 [Gemini] Executing Tool: ${call.name} with args:`, call.args);
+    try {
+        const chat = model.startChat({ history: formattedHistory });
+        let result = await chat.sendMessage(message);
         
-        let functionResponseData = {};
+        // Safety check for empty or blocked responses
+        if (!result.response || !result.response.candidates || result.response.candidates.length === 0) {
+            return res.status(200).json({
+                responseText: "I'm sorry, but I can't process that request due to my safety policy. How else can I help?"
+            });
+        }
 
-        if (call.name === "searchEvents") {
-            const { query, category, maxPrice } = call.args;
-            let filter = {};
-            if (query) {
-                filter.$or = [
-                    { title: { $regex: query, $options: 'i' } },
-                    { location: { $regex: query, $options: 'i' } }
-                ];
-            }
-            if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
-            if (maxPrice) filter.price = { $lte: maxPrice };
+        // Check for function calls
+        let functionCalls = result.response.functionCalls();
+        let turnCount = 0;
 
-            const events = await Event.find(filter).limit(5).select('_id title date time price location category availableTickets');
-            functionResponseData = { 
-                status: "success", 
-                results: events.length > 0 ? events : "No events found matching criteria." 
-            };
-        } 
-        else if (call.name === "bookTickets") {
-            const { eventId, quantity } = call.args;
+        while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
+            const call = functionCalls[0];
+            console.log(`🤖 [Gemini Tool] Executing: ${call.name} with args:`, call.args);
             
-            try {
-                // Duplicate booking logic from ticketController.js for secure Agent execution
-                const event = await Event.findById(eventId);
-                if (!event) throw new Error('Event not found');
-                if (event.availableTickets < quantity) throw new Error(`Only ${event.availableTickets} tickets remaining`);
+            let functionResponseData = {};
 
-                // OCC pattern
-                const updatedEvent = await Event.findOneAndUpdate(
-                    { _id: eventId, availableTickets: { $gte: quantity } },
-                    { $inc: { availableTickets: -quantity, soldTickets: quantity } },
-                    { new: true }
-                );
+            if (call.name === "searchEvents") {
+                const { query, category, maxPrice } = call.args;
+                let filter = {};
+                if (query) {
+                    filter.$or = [
+                        { title: { $regex: query, $options: 'i' } },
+                        { location: { $regex: query, $options: 'i' } }
+                    ];
+                }
+                if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
+                if (maxPrice) filter.price = { $lte: maxPrice };
 
-                if (!updatedEvent) throw new Error('Tickets were just sold out. Race condition hit.');
-
-                const ticket = await Ticket.create({
-                    user: req.user.id,
-                    event: eventId,
-                    quantity,
-                    status: 'Confirmed'
-                });
-
-                await invalidateEventCache();
-
-                // WS Update
-                try {
-                    const { getIO } = require('../socket');
-                    const io = getIO();
-                    io.emit('ticket_updated', { eventId, availableTickets: updatedEvent.availableTickets });
-                } catch (e) {}
-
-                // Send Email Notification
-                const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
-                const eventForEmail = { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price, category: updatedEvent.category };
-                const ticketForEmail = { _id: ticket._id, quantity: ticket.quantity, status: ticket.status };
-
-                setImmediate(async () => {
-                    try {
-                        const pdfBuffer = await generateTicketPDF(ticketForEmail, eventForEmail, userForEmail);
-                        await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
-                    } catch (e) {}
-                });
-
+                const events = await Event.find(filter).limit(5).select('_id title date time price location category availableTickets');
                 functionResponseData = { 
                     status: "success", 
-                    message: `Successfully booked ${quantity} tickets! Ticket ID: ${ticket._id}` 
+                    results: events.length > 0 ? events : "No events found matching criteria." 
                 };
-            } catch (err) {
-                functionResponseData = { status: "error", error: err.message };
+            } 
+            else if (call.name === "bookTickets") {
+                const { eventId, quantity } = call.args;
+                
+                try {
+                    console.log(`🤖 [Gemini Tool] AI-Initiated Booking for ${eventId} | Quantity: ${quantity}...`);
+                    const event = await Event.findById(eventId);
+                    if (!event) throw new Error('Event not found');
+                    if (event.availableTickets < quantity) throw new Error(`Only ${event.availableTickets} tickets remaining`);
+
+                    const updatedEvent = await Event.findOneAndUpdate(
+                        { _id: eventId, availableTickets: { $gte: quantity } },
+                        { $inc: { availableTickets: -quantity, soldTickets: quantity } },
+                        { new: true }
+                    );
+
+                    if (!updatedEvent) throw new Error('Tickets were just sold out. Race condition hit.');
+
+                    const ticket = await Ticket.create({
+                        user: req.user.id,
+                        event: eventId,
+                        quantity,
+                        status: 'Confirmed'
+                    });
+
+                    console.log(`✅ [Gemini Tool] AI Booking Successful: ${ticket._id}`);
+                    await invalidateEventCache();
+
+                    // Real-time Update
+                    try {
+                        const { getIO } = require('../socket');
+                        const io = getIO();
+                        io.emit('ticket_updated', { eventId, availableTickets: updatedEvent.availableTickets });
+                    } catch (e) {}
+
+                    // Email with Trace Logs (Matches ticketController logic)
+                    const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
+                    const eventForEmail = { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price, category: updatedEvent.category };
+                    const ticketForEmail = { _id: ticket._id, quantity: ticket.quantity, status: ticket.status };
+
+                    setImmediate(async () => {
+                        try {
+                            console.log(`📧 [Gemini/Email] Generating PDF for AI-booked ticket ${ticket._id}...`);
+                            const pdfBuffer = await generateTicketPDF(ticketForEmail, eventForEmail, userForEmail);
+                            await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
+                        } catch (emailErr) {
+                            console.error(`❌ [Gemini/Email] AI Ticket email failed:`, emailErr.message);
+                        }
+                    });
+
+                    functionResponseData = { 
+                        status: "success", 
+                        message: `Successfully booked ${quantity} tickets! Ticket ID: ${ticket._id}. An e-ticket has been sent to your email.` 
+                    };
+                } catch (err) {
+                    console.error(`❌ [Gemini Tool] AI Booking Error:`, err.message);
+                    functionResponseData = { status: "error", error: err.message };
+                }
+            }
+
+            // Resume conversation with tool results
+            result = await chat.sendMessage([{
+                functionResponse: {
+                    name: call.name,
+                    response: functionResponseData
+                }
+            }]);
+
+            functionCalls = result.response.functionCalls();
+            turnCount++;
+        }
+
+        // Final response after potential tool calls
+        let finalOutput = "I encountered an issue processing that. Can you please rephrase?";
+        try {
+            finalOutput = result.response.text();
+        } catch (textErr) {
+            // Handle cases where the response exists but text() method throws 
+            // (e.g. model only returned a function call or was blocked mid-turn)
+            if (result.response.candidates && result.response.candidates[0].content) {
+                const part = result.response.candidates[0].content.parts.find(p => p.text);
+                if (part) finalOutput = part.text;
             }
         }
 
-        // Send the function execution result back to Gemini so it can generate a final response
-        result = await chat.sendMessage([{
-            functionResponse: {
-                name: call.name,
-                response: functionResponseData
-            }
-        }]);
+        res.status(200).json({
+            responseText: finalOutput
+        });
 
-        functionCalls = result.response.functionCalls();
-        turnCount++;
+    } catch (apiError) {
+        console.error("❌ [Gemini API] Fatal Error:", apiError.message);
+        res.status(500).json({
+            message: "AI Assistant is currently unavailable. Please try again in a moment.",
+            error: apiError.message
+        });
     }
-
-    res.status(200).json({
-        reponseText: result.response.text()
-    });
 });
 
 module.exports = { handleChat };
