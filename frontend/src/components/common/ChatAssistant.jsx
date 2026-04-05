@@ -46,7 +46,7 @@ const ChatAssistant = () => {
                 headers: { Authorization: `Bearer ${user.token}` }
             });
 
-            setMessages(prev => [...prev, { role: 'ai', text: res.data.reponseText }]);
+            setMessages(prev => [...prev, { role: 'ai', text: res.data.responseText }]);
         } catch (error) {
             console.error('Chat error:', error);
             const errorMsg = error.response?.data?.message || "Sorry, I'm having trouble connecting right now.";
