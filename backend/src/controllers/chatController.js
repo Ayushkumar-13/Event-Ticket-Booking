@@ -22,7 +22,11 @@ const handleChat = asyncHandler(async (req, res) => {
         throw new ApiError(500, 'Server AI Configuration Missing: GEMINI_API_KEY not found in backend/.env');
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    // Masked log for verification (Shows first 4 and last 4 chars)
+    const key = process.env.GEMINI_API_KEY;
+    console.log(`🤖 [Gemini] Using API Key: ${key.substring(0, 4)}...${key.substring(key.length - 4)} (Length: ${key.length})`);
+
+    const genAI = new GoogleGenerativeAI(key);
     console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash...");
     
     const model = genAI.getGenerativeModel({
