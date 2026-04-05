@@ -18,11 +18,13 @@ const handleChat = asyncHandler(async (req, res) => {
     }
 
     if (!process.env.GEMINI_API_KEY) {
-        res.status(500);
-        throw new Error('Server AI Configuration Missing: GEMINI_API_KEY not found in backend/.env');
+        console.error("❌ [Gemini Configuration] GEMINI_API_KEY is missing from .env");
+        throw new ApiError(500, 'Server AI Configuration Missing: GEMINI_API_KEY not found in backend/.env');
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash...");
+    
     const model = genAI.getGenerativeModel({
         model: "gemini-1.5-flash",
         systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users. If a user asks to book tickets but you don't know the exact Event ID, search for the event first, show them the options, and ask for confirmation before booking. If they provide enough detail that uniquely identifies an event, you can book it directly using the bookTickets tool. Always be polite and conversational. If you book successfully, tell the user their Ticket ID.",
@@ -62,7 +64,10 @@ const handleChat = asyncHandler(async (req, res) => {
     }));
 
     try {
+        console.log(`🤖 [Gemini] Starting chat session with ${formattedHistory.length} history items...`);
         const chat = model.startChat({ history: formattedHistory });
+        
+        console.log(`🤖 [Gemini] Sending message: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
         let result = await chat.sendMessage(message);
         
         // Safety check for empty or blocked responses

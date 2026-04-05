@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
+const ApiError = require('../utils/ApiError');
 
 const protect = asyncHandler(async (req, res, next) => {
     let token;
@@ -13,7 +14,7 @@ const protect = asyncHandler(async (req, res, next) => {
 
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log("🔐 Auth: Token decoded, user ID:", decoded.id);
+            console.log("🔐 Auth: Token decoded, User ID:", decoded.id);
 
             // Get user from the token
             req.user = await User.findById(decoded.id).select('-password');
@@ -22,8 +23,8 @@ const protect = asyncHandler(async (req, res, next) => {
             next();
         } catch (error) {
             console.error("❌ Auth: Token verification failed:", error.message);
-            res.status(401);
-            throw new Error('Not authorized');
+            // Use ApiError to ensure the correct 401 status is sent to the frontend
+            throw new ApiError(401, `Not authorized: ${error.message}`);
         }
     }
 
