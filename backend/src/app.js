@@ -7,7 +7,7 @@ dotenv.config();
 
 const connectDB = require('./config/database');  // ✅ FIXED: Changed from './config/db'
 const routes = require('./routes');
-const { errorHandler } = require('./middlewares/errorMiddleware');
+const errorHandler = require('./middlewares/errorMiddleware');
 const notFound = require('./middlewares/notFoundMiddleware');
 
 

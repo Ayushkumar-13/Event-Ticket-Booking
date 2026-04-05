@@ -1,12 +1,20 @@
+const ApiError = require('../utils/ApiError');
+
 const errorHandler = (err, req, res, next) => {
-    const statusCode = res.statusCode ? res.statusCode : 500;
+    let error = err;
 
-    res.status(statusCode);
+    if (!(error instanceof ApiError)) {
+        error = new ApiError(
+            err.statusCode || 500,
+            err.message || 'Something went wrong'
+        );
+    }
 
-    res.json({
-        message: err.message,
-        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
 };
 
-module.exports = { errorHandler };
+module.exports = errorHandler;
