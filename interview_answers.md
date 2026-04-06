@@ -254,3 +254,33 @@ In my tests, I mocked the `Upstash Redis` caches and the `BullMQ` message queues
 1. **Confidence to Move Fast:** Testing takes time upfront, but it pays off exponentially. When I refactored the Event Controller, I simply typed `npm run test` and instantly knew if I broke the Authentication Controller. 
 2. **The Definition of Done:** At a FAANG company, a feature is not 'done' when it works on my laptop. It is only 'done' when it is accompanied by tests that enforce its contract for the next 5 years."
 
+***
+
+# Interview Question: AI & LLM Integration (Function Calling)
+
+**Interviewer:** "AI is a buzzword right now, but how do you actually integrate an LLM into a production application to do more than just return text? How can an AI interact safely with our secure database and core business logic?"
+
+**Your Answer:**
+
+"To bridge the gap between a conversational LLM and a secure backend, I implemented an **Autonomous Booking Assistant** using the **Function Calling (Tools)** capabilities of Google AI (Gemini). Instead of giving the AI direct access to the database—which is a massive security risk—I exposed specific, deterministic Node.js functions as 'Tools' that the AI can request to execute on behalf of the user.
+
+Here is exactly how I implemented it in this project:
+
+### 1. The React Frontend (The Interface)
+I built a floating Chat Widget in React. When a user types a natural language complex query like *"Find me music events this weekend under $50 and book 2 tickets"*, the frontend simply posts that string to my `/api/chat` endpoint. It has zero knowledge of the database structure.
+
+### 2. The Node.js Backend & Gemini SDK
+On the server, I integrated the `@google/generative-ai` SDK. I defined two strict tools using JSON Schema:
+- `searchEvents(query, maxPrice)`
+- `bookTickets(eventId, quantity)`
+
+When the backend sends the user's prompt to Gemini, it includes these tool definitions.
+
+### 3. The Execution Loop (Agentic Flow)
+1. **The Decision:** Gemini analyzes the prompt and determines it cannot answer with plain text. It returns a structured `functionCall` requesting to execute `searchEvents(category: 'music', maxPrice: 50)`.
+2. **Local Execution:** My Express server intercepts this request, runs standard Mongoose queries against the database, and returns the JSON results back to Gemini as a `functionResponse`.
+3. **The Action:** Gemini matches the events, and then issues a *second* `functionCall`—this time to `bookTickets(eventId, 2)`.
+4. **The Security:** Because the execution happens entirely on my Node.js server, standard validation, authentication (`req.user.id`), and Optimistic Concurrency Control (OCC) apply. The AI cannot bypass ticket limits because it triggers the exact same internal logic that a human clicking the UI would trigger.
+
+### Why this demonstrates senior-level architecture:
+This demonstrates **Agentic Architecture**. The AI is not just a chatbot; it acts as a reasoning engine orchestrating unstructured human language with highly structured backend controllers, all while maintaining the full security and database integrity of the original system."
