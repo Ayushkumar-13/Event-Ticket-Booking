@@ -24,14 +24,18 @@ const handleChat = asyncHandler(async (req, res) => {
     }
 
     // Masked log for verification (Shows first 4 and last 4 chars)
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GEMINI_API_KEY?.trim();
+    if (!key) {
+        throw new ApiError(500, 'Server Error: AI Configuration (API Key) is empty or missing from your Live Dashboard.');
+    }
+
     console.log(`🤖 [Gemini] Using API Key: ${key.substring(0, 4)}...${key.substring(key.length - 4)} (Length: ${key.length})`);
 
     const genAI = new GoogleGenerativeAI(key);
-    console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash-latest...");
+    console.log("🤖 [Gemini] Initializing model: models/gemini-1.5-flash...");
 
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-latest",
+        model: "models/gemini-1.5-flash",
         systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users. If a user asks to book tickets but you don't know the exact Event ID, search for the event first, show them the options, and ask for confirmation before booking. If they provide enough detail that uniquely identifies an event, you can book it directly using the bookTickets tool. Always be polite and conversational. If you book successfully, tell the user their Ticket ID.",
         tools: [{
             functionDeclarations: [
