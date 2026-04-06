@@ -5,6 +5,7 @@ const Ticket = require('../models/Ticket');
 const { generateTicketPDF } = require('../utils/pdfGenerator');
 const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
+const ApiError = require('../utils/ApiError');
 
 // @desc    Handle chat assistant messages
 // @route   POST /api/chat
