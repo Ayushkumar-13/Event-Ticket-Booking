@@ -27,14 +27,20 @@ const handleChat = asyncHandler(async (req, res) => {
     const key = rawKey.trim();
     const genAI = new GoogleGenerativeAI(key);
 
+    const formattedHistory = previousHistory.map(msg => ({
+        role: msg.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: msg.text }]
+    }));
+
     // List of models to try in order of preference
     const modelsToTry = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-pro", "models/gemini-1.5-flash"];
     
     let lastError = null;
 
+    // ACTIVE RETRY LOOP: We try each model until one successfully sends a message
     for (const modelName of modelsToTry) {
         try {
-            console.log(`🤖 [Gemini] Attempting chat with model: ${modelName}...`);
+            console.log(`🤖 [Gemini] Attempting full chat turn with model: ${modelName}...`);
             
             const model = genAI.getGenerativeModel({
                 model: modelName,
@@ -69,13 +75,13 @@ const handleChat = asyncHandler(async (req, res) => {
                 }]
             });
 
-            const formattedHistory = previousHistory.map(msg => ({
-                role: msg.role === 'ai' ? 'model' : 'user',
-                parts: [{ text: msg.text }]
-            }));
-
             const chat = model.startChat({ history: formattedHistory });
+            
+            // This is where the 404 usually happens if the model is unavailable
             let result = await chat.sendMessage(message);
+
+            // If we reach here, the model is valid and the message was sent!
+            console.log(`✅ [Gemini] Successfully using model: ${modelName}`);
 
             // Handle potential tool calls
             let functionCalls = result.response.functionCalls();
@@ -151,7 +157,7 @@ const handleChat = asyncHandler(async (req, res) => {
                 turnCount++;
             }
 
-            // Successful completion
+            // Final response formatting
             let finalOutput = "I'm sorry, I'm having trouble phrasing that.";
             try {
                 finalOutput = result.response.text();
@@ -164,20 +170,27 @@ const handleChat = asyncHandler(async (req, res) => {
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.error(`⚠️ [Gemini] Model ${modelName} failed:`, err.message);
+            console.error(`⚠️ [Gemini] Model ${modelName} failed during call:`, err.message);
             lastError = err;
-            if (err.message.includes('404') || err.message.includes('not found')) {
-                continue; // Try next model in list
+            
+            // If it's a 404/Not Found, we CONTINUE to the next model
+            if (err.message.toLowerCase().includes('not found') || err.message.toLowerCase().includes('404')) {
+                continue;
             }
-            // If it's a non-404 error (like 401 or 429), break and throw
+            
+            // For other critical errors (401, 429), we stop here
             break;
         }
     }
 
-    // If we reach here, all models failed
+    // ALL MODELS FAILED
+    const isConfigError = lastError?.message.includes('API key not valid');
+    
     res.status(500).json({
-        message: "AI Assistant is currently unavailable. Please check your dashboard API settings.",
-        error: lastError ? lastError.message : "Unknown error"
+        message: isConfigError 
+            ? "Server Error: The provided Gemini API Key is invalid." 
+            : "AI Assistant is currently unavailable on this server region. Please check your Dashboard API settings.",
+        error: lastError ? lastError.message : "All available models failed to respond."
     });
 });
 
