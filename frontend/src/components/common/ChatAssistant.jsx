@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { MessageCircle, X, Send } from 'lucide-react';
-import axios from 'axios';
+import api from '../../services/api';
 
 const ChatAssistant = () => {
     const { user } = useAuth();
@@ -31,26 +31,16 @@ const ChatAssistant = () => {
         const userMessage = input.trim();
         const currentHistory = [...messages];
         
-        // Get token from state OR localStorage for maximum robustness
-        const activeToken = user?.token || localStorage.getItem('token');
-        
-        if (!activeToken) {
-            console.error('❌ [Chat] No valid session token found. Please re-login.');
-            setMessages(prev => [...prev, { role: 'ai', text: 'Your session has expired. Please log in again to use the AI Assistant.' }]);
-            return;
-        }
-
+        // Use the API utility for maximum robustness (handles tokens and base URL automatically)
         setMessages([...currentHistory, { role: 'user', text: userMessage }]);
         setInput('');
         setIsTyping(true);
 
         try {
             console.log('📤 [Chat] Sending request to AI backend...');
-            const res = await axios.post('http://localhost:5000/api/chat', {
+            const res = await api.post('/chat', {
                 message: userMessage,
                 previousHistory: currentHistory.slice(1)
-            }, {
-                headers: { Authorization: `Bearer ${activeToken}` }
             });
 
             setMessages(prev => [...prev, { role: 'ai', text: res.data.responseText }]);
