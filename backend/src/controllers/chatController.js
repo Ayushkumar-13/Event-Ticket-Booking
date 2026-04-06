@@ -28,10 +28,10 @@ const handleChat = asyncHandler(async (req, res) => {
     console.log(`🤖 [Gemini] Using API Key: ${key.substring(0, 4)}...${key.substring(key.length - 4)} (Length: ${key.length})`);
 
     const genAI = new GoogleGenerativeAI(key);
-    console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash...");
+    console.log("🤖 [Gemini] Initializing model: gemini-1.5-flash-latest...");
 
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-1.5-flash-latest",
         systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users. If a user asks to book tickets but you don't know the exact Event ID, search for the event first, show them the options, and ask for confirmation before booking. If they provide enough detail that uniquely identifies an event, you can book it directly using the bookTickets tool. Always be polite and conversational. If you book successfully, tell the user their Ticket ID.",
         tools: [{
             functionDeclarations: [
@@ -199,10 +199,20 @@ const handleChat = asyncHandler(async (req, res) => {
         });
 
     } catch (apiError) {
-        console.error("❌ [Gemini API] Fatal Error:", apiError.message);
-        res.status(500).json({
-            message: "AI Assistant is currently unavailable. Please try again in a moment.",
-            error: apiError.message
+        console.error(`❌ [Gemini API] Error:`, apiError.message);
+        
+        let userErrorMessage = "AI Assistant is currently unavailable. Please try again in a moment.";
+        if (!process.env.GEMINI_API_KEY) {
+            userErrorMessage = "Server Error: AI Configuration (API Key) is missing from your Live Dashboard (Vercel/Render) settings.";
+        } else if (apiError.message.includes('API key not valid')) {
+            userErrorMessage = "Server Error: The provided Gemini API Key is invalid or expired.";
+        } else if (apiError.message.includes('404')) {
+            userErrorMessage = "Server Error: Gemini model not found or unsupported ID.";
+        }
+
+        res.status(500).json({ 
+            message: userErrorMessage, 
+            error: apiError.message 
         });
     }
 });

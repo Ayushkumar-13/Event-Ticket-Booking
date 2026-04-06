@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-// Use VITE_API_URL during production, or fallback to relative path (to leverage Vite proxy) in development
+// For local development, this defaults to /api (handled by Vite proxy).
+// For production, you MUST set VITE_API_URL in your Vercel/live dashboard.
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-console.log("🚀 API URL Configured:", API_URL);
+console.log("🚀 [API Config] Active Backend:", API_URL.startsWith('http') ? API_URL : `Relative path (${API_URL}) - Ensure your frontend and backend are on the SAME domain!`);
 
 const api = axios.create({
     baseURL: API_URL,

@@ -46,7 +46,8 @@ const ChatAssistant = () => {
             setMessages(prev => [...prev, { role: 'ai', text: res.data.responseText }]);
             console.log('📥 [Chat] AI response received successfully.');
         } catch (error) {
-            console.error('❌ [Chat] Assistant error:', error.response?.data || error.message);
+            const fullURL = `${error.config?.baseURL || ''}${error.config?.url || ''}`;
+            console.error(`❌ [Chat] Assistant error at ${fullURL}:`, error.response?.data || error.message);
             
             let displayError = "Sorry, I'm having trouble connecting right now.";
             if (error.response?.status === 401) {
