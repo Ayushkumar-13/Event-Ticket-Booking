@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 // Load environment variables early, before other imports
 dotenv.config();
 
-const connectDB = require('./config/database');  // ✅ FIXED: Changed from './config/db'
+const connectDB = require('./config/database');
 const routes = require('./routes');
 const errorHandler = require('./middlewares/errorMiddleware');
 const notFound = require('./middlewares/notFoundMiddleware');
