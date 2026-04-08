@@ -8,8 +8,8 @@ const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
 
 /**
- * FINAL SURVIVAL CONTROLLER (v1 + v1beta Hybrid)
- * Designed to bypass regional 404 restrictions on Vercel.
+ * 2.5 FUTURE-PROOF & SURVIVAL CONTROLLER
+ * Prioritizes experimental 2.5 paths with full survival fallback to 2.0 and 1.5.
  */
 
 async function discoverModelsREST(apiKey, version) {
@@ -38,12 +38,17 @@ const handleChat = asyncHandler(async (req, res) => {
     debugInfo.v1_discovered = await discoverModelsREST(rawKey, 'v1');
     debugInfo.v1beta_discovered = await discoverModelsREST(rawKey, 'v1beta');
 
-    // 2. BUILD SURVIVAL QUEUE
+    // 2. BUILD SURVIVAL QUEUE (PRIORITIZING 2.5)
     const modelsToTry = [
         ...new Set([
-            ...debugInfo.v1beta_discovered, // Advanced tools preferred
-            ...debugInfo.v1_discovered,     // Stable chat second
-            'models/gemini-1.5-flash',      // Explicit hardcodes
+            'models/gemini-2.5-flash',      // Future-Proofing
+            'models/gemini-2.5-pro',        // Future-Proofing
+            'models/gemini-2.0-flash',      // Current Best
+            'models/gemini-2.0-flash-lite',
+            'models/gemini-2.0-flash-exp',
+            ...debugInfo.v1beta_discovered,
+            ...debugInfo.v1_discovered,
+            'models/gemini-1.5-flash',
             'models/gemini-1.5-flash-latest',
             'models/gemini-pro'
         ])
@@ -57,18 +62,15 @@ const handleChat = asyncHandler(async (req, res) => {
     let lastError = null;
 
     for (const modelPath of modelsToTry) {
-        // We try BOTH v1beta and v1 for every model if needed
         const versions = ['v1beta', 'v1'];
-        
         for (const apiVersion of versions) {
             try {
                 const attemptId = `${modelPath} (${apiVersion})`;
                 debugInfo.attempts.push(attemptId);
-                console.log(`🤖 Attempting: ${attemptId}...`);
+                console.log(`🤖 [Future-Proof] Attempting: ${attemptId}...`);
 
                 const model = genAI.getGenerativeModel({ model: modelPath }, { apiVersion });
 
-                // Only v1beta supports tools with System Instructions reliably
                 if (apiVersion === 'v1beta') {
                     model.tools = [{
                         functionDeclarations: [
@@ -89,14 +91,12 @@ const handleChat = asyncHandler(async (req, res) => {
                 const chat = model.startChat({ history });
                 let result = await chat.sendMessage(message);
 
-                // Check for Tool Calls (v1beta only)
                 let functionCalls = result.response.functionCalls();
                 let turnCount = 0;
 
                 while (functionCalls && functionCalls.length > 0 && turnCount < 2) {
                     const call = functionCalls[0];
                     let responseData = { status: 'error', message: 'Not found' };
-
                     if (call.name === 'searchEvents') {
                         const { query, category, maxPrice } = call.args;
                         let filter = {};
@@ -123,19 +123,15 @@ const handleChat = asyncHandler(async (req, res) => {
                             responseData = { status: 'success', message: `Booked ${quantity} tickets! ID: ${ticket._id}` };
                         } catch (err) { responseData = { status: 'error', error: err.message }; }
                     }
-
                     result = await chat.sendMessage([{ functionResponse: { name: call.name, response: responseData } }]);
                     functionCalls = result.response.functionCalls();
                     turnCount++;
                 }
 
                 const responseText = result.response.text();
-                if (responseText) {
-                    return res.status(200).json({ responseText });
-                }
-
+                if (responseText) return res.status(200).json({ responseText });
             } catch (err) {
-                console.warn(`⚠️ [Wait] Model ${modelPath} failed:`, err.message);
+                console.warn(`⚠️ [Survival] ${modelPath} skipped:`, err.message);
                 lastError = err;
                 continue; 
             }
@@ -143,7 +139,7 @@ const handleChat = asyncHandler(async (req, res) => {
     }
 
     res.status(500).json({
-        message: 'AI Assistant unavailable in this region.',
+        message: 'AI Assistant currently unavailable.',
         error: lastError?.message,
         debug: debugInfo
     });
