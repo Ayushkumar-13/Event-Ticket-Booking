@@ -1,23 +1,19 @@
 const asyncHandler = require('express-async-handler');
 const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
+const { generateTicketPDF } = require('../utils/pdfGenerator');
+const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
 
-// ─────────────────────────────────────────────────────────────
-// We bypass @google/generative-ai SDK entirely because it
-// hardcodes v1beta internally. Instead we call the REST API
-// directly using v1 which has proper model support.
-// ─────────────────────────────────────────────────────────────
-
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1/models';
+// REST API Configuration (v1beta is REQUIRED for system_instruction and tools)
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const MODELS_TO_TRY = [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
     'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
-    'gemini-1.5-pro',
+    'gemini-1.5-flash-latest',
+    'gemini-pro',
+    'gemini-2.0-flash-exp'
 ];
 
 const TOOLS = [{
@@ -50,10 +46,10 @@ const TOOLS = [{
 }];
 
 const SYSTEM_INSTRUCTION = {
-    parts: [{ text: 'You are a helpful ticketing assistant. You can search for events and book tickets.' }]
+    parts: [{ text: 'You are a helpful ticketing assistant. You can search for events and book tickets for users. Be energetic and helpful!' }]
 };
 
-// Call Google Gemini REST API directly (v1)
+// Direct REST call to Gemini v1beta
 async function callGemini(apiKey, modelName, contents) {
     const url = `${GEMINI_BASE}/${modelName}:generateContent?key=${apiKey}`;
     const body = {
@@ -69,20 +65,16 @@ async function callGemini(apiKey, modelName, contents) {
     });
 
     const data = await res.json();
-
     if (!res.ok) {
         throw new Error(data?.error?.message || `HTTP ${res.status}`);
     }
-
     return data;
 }
 
-// Extract text from Gemini REST response
 function extractText(data) {
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
 }
 
-// Extract function call from Gemini REST response
 function extractFunctionCall(data) {
     const parts = data?.candidates?.[0]?.content?.parts || [];
     const fnPart = parts.find(p => p.functionCall);
@@ -102,12 +94,12 @@ const handleChat = asyncHandler(async (req, res) => {
 
     const rawKey = process.env.GEMINI_API_KEY;
     if (!rawKey) {
-        throw new ApiError(500, 'GEMINI_API_KEY not found in environment variables.');
+        throw new ApiError(500, 'GEMINI_API_KEY not found in environment.');
     }
 
     const key = rawKey.trim();
 
-    // Build conversation history in Gemini REST format
+    // Map history to Gemini format
     const contents = [
         ...previousHistory.map(msg => ({
             role: msg.role === 'ai' ? 'model' : 'user',
@@ -122,31 +114,25 @@ const handleChat = asyncHandler(async (req, res) => {
     for (const modelName of MODELS_TO_TRY) {
         try {
             debugInfo.attempts.push(modelName);
-            console.log(`🤖 [Gemini v1] Trying: ${modelName}...`);
+            console.log(`🤖 [REST Attempt] Trying: ${modelName}...`);
 
             let data = await callGemini(key, modelName, contents);
-            console.log(`✅ [Gemini v1] Success with: ${modelName}`);
-
-            // Handle function calls (tool use) — up to 2 turns
+            
+            // Loop for potential tool calls (max 2 turns)
             let turnCount = 0;
             while (turnCount < 2) {
                 const fnCall = extractFunctionCall(data);
                 if (!fnCall) break;
 
-                console.log(`🔧 [Gemini] Function call: ${fnCall.name}`, fnCall.args);
-
+                console.log(`🔧 [Gemini Tool] Executing: ${fnCall.name}`, fnCall.args);
                 let functionResponseData = { status: 'error', message: 'Unknown function' };
 
                 if (fnCall.name === 'searchEvents') {
                     const { query, category, maxPrice } = fnCall.args;
                     let filter = {};
-                    if (query) filter.$or = [
-                        { title: { $regex: query, $options: 'i' } },
-                        { location: { $regex: query, $options: 'i' } }
-                    ];
+                    if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { location: { $regex: query, $options: 'i' } }];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
-
                     const events = await Event.find(filter).limit(3);
                     functionResponseData = { status: 'success', results: events };
                 }
@@ -155,7 +141,6 @@ const handleChat = asyncHandler(async (req, res) => {
                     try {
                         const event = await Event.findById(eventId);
                         if (!event) throw new Error('Event not found');
-
                         const updatedEvent = await Event.findOneAndUpdate(
                             { _id: eventId, availableTickets: { $gte: quantity } },
                             { $inc: { availableTickets: -quantity, soldTickets: quantity } },
@@ -163,46 +148,45 @@ const handleChat = asyncHandler(async (req, res) => {
                         );
                         if (!updatedEvent) throw new Error('Tickets sold out');
 
-                        const ticket = await Ticket.create({
-                            user: req.user.id,
-                            event: eventId,
-                            quantity,
-                            status: 'Confirmed'
-                        });
+                        const ticket = await Ticket.create({ user: req.user.id, event: eventId, quantity, status: 'Confirmed' });
                         await invalidateEventCache();
-                        functionResponseData = {
-                            status: 'success',
-                            message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`
-                        };
-                    } catch (err) {
-                        functionResponseData = { status: 'error', error: err.message };
-                    }
+                        
+                        // Side Effect: Async Email and PDF
+                        setImmediate(async () => {
+                            try {
+                                const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
+                                const eventForEmail = { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price };
+                                const pdfBuffer = await generateTicketPDF(ticket, eventForEmail, userForEmail);
+                                await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
+                            } catch (e) { console.error("📧 Email Error:", e.message); }
+                        });
+
+                        functionResponseData = { status: 'success', message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}` };
+                    } catch (err) { functionResponseData = { status: 'error', error: err.message }; }
                 }
 
-                // Send function result back to model
+                // Add call and response to history and re-call
                 contents.push(
                     { role: 'model', parts: [{ functionCall: fnCall }] },
                     { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
                 );
-
                 data = await callGemini(key, modelName, contents);
                 turnCount++;
             }
 
-            const finalOutput = extractText(data) || "I'm sorry, I couldn't process that request right now.";
+            const finalOutput = extractText(data) || "I'm sorry, I'm having trouble phrasing that.";
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.warn(`⚠️ [Gemini v1] ${modelName} failed:`, err.message);
+            console.warn(`⚠️ [REST Attempt] ${modelName} failed:`, err.message);
             lastError = err;
             continue;
         }
     }
 
-    // All models failed
     res.status(500).json({
-        message: 'AI Assistant is currently unavailable. Please try again later.',
-        error: lastError?.message || 'All model fallbacks exhausted.',
+        message: 'AI Assistant is currently unavailable.',
+        error: lastError?.message || 'All model fallbacks failed.',
         debug: debugInfo
     });
 });
