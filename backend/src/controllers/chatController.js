@@ -1,11 +1,93 @@
 const asyncHandler = require('express-async-handler');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
-const { generateTicketPDF } = require('../utils/pdfGenerator');
-const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
+
+// ─────────────────────────────────────────────────────────────
+// We bypass @google/generative-ai SDK entirely because it
+// hardcodes v1beta internally. Instead we call the REST API
+// directly using v1 which has proper model support.
+// ─────────────────────────────────────────────────────────────
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1/models';
+
+const MODELS_TO_TRY = [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
+    'gemini-1.5-pro',
+];
+
+const TOOLS = [{
+    functionDeclarations: [
+        {
+            name: 'searchEvents',
+            description: 'Search for events by title, location, category or price',
+            parameters: {
+                type: 'OBJECT',
+                properties: {
+                    query: { type: 'STRING', description: 'Search keyword' },
+                    category: { type: 'STRING', description: 'Event category' },
+                    maxPrice: { type: 'NUMBER', description: 'Maximum ticket price' }
+                }
+            }
+        },
+        {
+            name: 'bookTickets',
+            description: 'Book tickets for an event',
+            parameters: {
+                type: 'OBJECT',
+                properties: {
+                    eventId: { type: 'STRING', description: 'The event ID' },
+                    quantity: { type: 'NUMBER', description: 'Number of tickets' }
+                },
+                required: ['eventId', 'quantity']
+            }
+        }
+    ]
+}];
+
+const SYSTEM_INSTRUCTION = {
+    parts: [{ text: 'You are a helpful ticketing assistant. You can search for events and book tickets.' }]
+};
+
+// Call Google Gemini REST API directly (v1)
+async function callGemini(apiKey, modelName, contents) {
+    const url = `${GEMINI_BASE}/${modelName}:generateContent?key=${apiKey}`;
+    const body = {
+        system_instruction: SYSTEM_INSTRUCTION,
+        tools: TOOLS,
+        contents
+    };
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+        throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    }
+
+    return data;
+}
+
+// Extract text from Gemini REST response
+function extractText(data) {
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
+
+// Extract function call from Gemini REST response
+function extractFunctionCall(data) {
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const fnPart = parts.find(p => p.functionCall);
+    return fnPart ? fnPart.functionCall : null;
+}
 
 // @desc    Handle chat assistant messages
 // @route   POST /api/chat
@@ -20,86 +102,43 @@ const handleChat = asyncHandler(async (req, res) => {
 
     const rawKey = process.env.GEMINI_API_KEY;
     if (!rawKey) {
-        throw new ApiError(500, 'Server AI Configuration Missing: GEMINI_API_KEY not found in dashboard settings.');
+        throw new ApiError(500, 'GEMINI_API_KEY not found in environment variables.');
     }
 
     const key = rawKey.trim();
 
-    // ✅ FIX: Use v1 instead of v1beta (SDK default)
-    // v1 has better model availability and stability on Vercel
-    const genAI = new GoogleGenerativeAI(key, {
-        apiVersion: "v1"
-    });
-
-    const formattedHistory = previousHistory.map(msg => ({
-        role: msg.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: msg.text }]
-    }));
-
-    // Ordered from newest/best to oldest fallback
-    const modelsToTry = [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-pro",
+    // Build conversation history in Gemini REST format
+    const contents = [
+        ...previousHistory.map(msg => ({
+            role: msg.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: msg.text }]
+        })),
+        { role: 'user', parts: [{ text: message }] }
     ];
 
     let lastError = null;
-    let debugInfo = { attempts: [] };
+    const debugInfo = { attempts: [] };
 
-    for (const modelName of modelsToTry) {
+    for (const modelName of MODELS_TO_TRY) {
         try {
             debugInfo.attempts.push(modelName);
-            console.log(`🤖 [Gemini] Trying model: ${modelName}...`);
+            console.log(`🤖 [Gemini v1] Trying: ${modelName}...`);
 
-            const model = genAI.getGenerativeModel({
-                model: modelName,
-                systemInstruction: "You are a helpful ticketing assistant. You can search for events and book tickets.",
-                tools: [{
-                    functionDeclarations: [
-                        {
-                            name: "searchEvents",
-                            description: "Search for events",
-                            parameters: {
-                                type: "OBJECT",
-                                properties: {
-                                    query: { type: "STRING" },
-                                    category: { type: "STRING" },
-                                    maxPrice: { type: "NUMBER" }
-                                }
-                            }
-                        },
-                        {
-                            name: "bookTickets",
-                            description: "Book tickets",
-                            parameters: {
-                                type: "OBJECT",
-                                properties: {
-                                    eventId: { type: "STRING" },
-                                    quantity: { type: "NUMBER" }
-                                },
-                                required: ["eventId", "quantity"]
-                            }
-                        }
-                    ]
-                }]
-            });
+            let data = await callGemini(key, modelName, contents);
+            console.log(`✅ [Gemini v1] Success with: ${modelName}`);
 
-            const chat = model.startChat({ history: formattedHistory });
-            let result = await chat.sendMessage(message);
-
-            console.log(`✅ [Gemini] Success with model: ${modelName}`);
-
-            let functionCalls = result.response.functionCalls();
+            // Handle function calls (tool use) — up to 2 turns
             let turnCount = 0;
+            while (turnCount < 2) {
+                const fnCall = extractFunctionCall(data);
+                if (!fnCall) break;
 
-            while (functionCalls && functionCalls.length > 0 && turnCount < 2) {
-                const call = functionCalls[0];
-                let functionResponseData = { status: "error", message: "Not found" };
+                console.log(`🔧 [Gemini] Function call: ${fnCall.name}`, fnCall.args);
 
-                if (call.name === "searchEvents") {
-                    const { query, category, maxPrice } = call.args;
+                let functionResponseData = { status: 'error', message: 'Unknown function' };
+
+                if (fnCall.name === 'searchEvents') {
+                    const { query, category, maxPrice } = fnCall.args;
                     let filter = {};
                     if (query) filter.$or = [
                         { title: { $regex: query, $options: 'i' } },
@@ -107,20 +146,23 @@ const handleChat = asyncHandler(async (req, res) => {
                     ];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
+
                     const events = await Event.find(filter).limit(3);
-                    functionResponseData = { status: "success", results: events };
+                    functionResponseData = { status: 'success', results: events };
                 }
-                else if (call.name === "bookTickets") {
-                    const { eventId, quantity } = call.args;
+                else if (fnCall.name === 'bookTickets') {
+                    const { eventId, quantity } = fnCall.args;
                     try {
                         const event = await Event.findById(eventId);
                         if (!event) throw new Error('Event not found');
+
                         const updatedEvent = await Event.findOneAndUpdate(
                             { _id: eventId, availableTickets: { $gte: quantity } },
                             { $inc: { availableTickets: -quantity, soldTickets: quantity } },
                             { new: true }
                         );
-                        if (!updatedEvent) throw new Error('Sold out');
+                        if (!updatedEvent) throw new Error('Tickets sold out');
+
                         const ticket = await Ticket.create({
                             user: req.user.id,
                             event: eventId,
@@ -129,43 +171,38 @@ const handleChat = asyncHandler(async (req, res) => {
                         });
                         await invalidateEventCache();
                         functionResponseData = {
-                            status: "success",
-                            message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}`
+                            status: 'success',
+                            message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`
                         };
                     } catch (err) {
-                        functionResponseData = { status: "error", error: err.message };
+                        functionResponseData = { status: 'error', error: err.message };
                     }
                 }
 
-                result = await chat.sendMessage([{
-                    functionResponse: { name: call.name, response: functionResponseData }
-                }]);
-                functionCalls = result.response.functionCalls();
+                // Send function result back to model
+                contents.push(
+                    { role: 'model', parts: [{ functionCall: fnCall }] },
+                    { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
+                );
+
+                data = await callGemini(key, modelName, contents);
                 turnCount++;
             }
 
-            let finalOutput = "I'm sorry, I'm having trouble with that request right now.";
-            try {
-                finalOutput = result.response.text();
-            } catch (e) {
-                if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    finalOutput = result.response.candidates[0].content.parts[0].text;
-                }
-            }
-
+            const finalOutput = extractText(data) || "I'm sorry, I couldn't process that request right now.";
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.warn(`⚠️ [Gemini] Model ${modelName} failed:`, err.message);
+            console.warn(`⚠️ [Gemini v1] ${modelName} failed:`, err.message);
             lastError = err;
             continue;
         }
     }
 
-    // ALL ATTEMPTS FAILED
+    // All models failed
     res.status(500).json({
-        message: "AI Assistant is currently unavailable. Please try again later.",
-        error: lastError ? lastError.message : "All model fallbacks failed.",
+        message: 'AI Assistant is currently unavailable. Please try again later.',
+        error: lastError?.message || 'All model fallbacks exhausted.',
         debug: debugInfo
     });
 });
