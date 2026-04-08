@@ -8,91 +8,91 @@ const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
 
 /**
- * GOOGLE ENGINEERING STANDARD: High-Availability Gemini Controller
- * Targets multiple API versions and model IDs to ensure 100% uptime
- * across varying deployment regions (Vercel, AWS, Local).
+ * ULTRA-STABLE DISCOVERY CONTROLLER
+ * Automatically finds working model IDs for any deployment region.
  */
 
 const handleChat = asyncHandler(async (req, res) => {
     const { message, previousHistory = [] } = req.body;
     if (!message) throw new Error('Message is required');
 
-    const rawKey = process.env.GEMINI_API_KEY;
-    if (!rawKey) throw new ApiError(500, 'GEMINI_API_KEY missing from environment.');
+    const rawKey = (process.env.GEMINI_API_KEY || '').trim();
+    if (!rawKey) throw new ApiError(500, 'GEMINI_API_KEY missing.');
 
-    const apiKey = rawKey.trim();
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const genAI = new GoogleGenerativeAI(rawKey);
+    let discoveredModels = [];
 
-    // Build history for SDK
+    // 1. DISCOVERY PHASE (Bypass SDK bugs with direct REST)
+    try {
+        const discoverUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${rawKey}`;
+        const discRes = await fetch(discoverUrl);
+        const discData = await discRes.json();
+        
+        if (discData.models) {
+            discoveredModels = discData.models
+                .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+                .map(m => m.name); // Already includes "models/" prefix
+            console.log("🔍 [Discovery] Valid models found:", discoveredModels.join(', '));
+        }
+    } catch (e) {
+        console.warn("⚠️ [Discovery] Phase failed, falling back to static list.");
+    }
+
+    // 2. FALLBACK QUEUE (Discovered first, then standard defaults)
+    const fallbackList = [
+        'models/gemini-1.5-flash',
+        'models/gemini-1.5-flash-latest',
+        'models/gemini-pro',
+        'models/gemini-1.0-pro'
+    ];
+    
+    // De-duplicate and combine
+    const modelsToTry = [...new Set([...discoveredModels, ...fallbackList])];
+
     const history = previousHistory.map(msg => ({
         role: msg.role === 'ai' ? 'model' : 'user',
         parts: [{ text: msg.text }]
     }));
 
-    // Tiered Recovery Strategy
-    const configurations = [
-        { model: "gemini-1.5-flash", version: "v1beta", tools: true },
-        { model: "gemini-1.5-flash-latest", version: "v1beta", tools: true },
-        { model: "gemini-1.5-flash", version: "v1", tools: false },
-        { model: "gemini-pro", version: "v1", tools: false }
-    ];
-
     let lastError = null;
+    let debugInfo = { attempts: [] };
 
-    for (const config of configurations) {
+    for (const modelPath of modelsToTry) {
         try {
-            console.log(`🤖 [Gemini Engineering] Attempting: ${config.model} (${config.version})...`);
-            
-            // Re-initialize model object for each version attempt
+            debugInfo.attempts.push(modelPath);
+            console.log(`🤖 [Attempt] ${modelPath}...`);
+
+            // SDK Initialization with explicit v1beta for tool support
             const model = genAI.getGenerativeModel(
-                { model: config.model },
-                { apiVersion: config.version }
+                { model: modelPath },
+                { apiVersion: 'v1beta' }
             );
 
-            // Dynamically assign tools only if supported/requested
-            const chatOptions = { history };
-            if (config.tools) {
-                model.tools = [{
-                    functionDeclarations: [
-                        {
-                            name: 'searchEvents',
-                            description: 'Search for events by title, location, or price',
-                            parameters: {
-                                type: 'OBJECT',
-                                properties: {
-                                    query: { type: 'STRING' },
-                                    category: { type: 'STRING' },
-                                    maxPrice: { type: 'NUMBER' }
-                                }
-                            }
-                        },
-                        {
-                            name: 'bookTickets',
-                            description: 'Book tickets for an event',
-                            parameters: {
-                                type: 'OBJECT',
-                                properties: {
-                                    eventId: { type: 'STRING' },
-                                    quantity: { type: 'NUMBER' }
-                                },
-                                required: ['eventId', 'quantity']
-                            }
-                        }
-                    ]
-                }];
-            }
+            // Register Tools
+            model.tools = [{
+                functionDeclarations: [
+                    {
+                        name: 'searchEvents',
+                        description: 'Search for events',
+                        parameters: { type: 'OBJECT', properties: { query: { type: 'STRING' }, category: { type: 'STRING' }, maxPrice: { type: 'NUMBER' } } }
+                    },
+                    {
+                        name: 'bookTickets',
+                        description: 'Book tickets',
+                        parameters: { type: 'OBJECT', properties: { eventId: { type: 'STRING' }, quantity: { type: 'NUMBER' } }, required: ['eventId', 'quantity'] }
+                    }
+                ]
+            }];
 
-            const chat = model.startChat(chatOptions);
-            let result = await chat.sendMessage(req.body.message);
+            const chat = model.startChat({ history });
+            let result = await chat.sendMessage(message);
 
-            // Handle Function Calls (for v1beta tool-enabled configs)
+            // Handle tool calls
             let functionCalls = result.response.functionCalls();
             let turnCount = 0;
 
             while (functionCalls && functionCalls.length > 0 && turnCount < 2) {
                 const call = functionCalls[0];
-                console.log(`🔧 [Gemini Tool] Model triggered: ${call.name}`);
-
                 let responseData = { status: 'error', message: 'Not found' };
 
                 if (call.name === 'searchEvents') {
@@ -108,23 +108,16 @@ const handleChat = asyncHandler(async (req, res) => {
                     try {
                         const event = await Event.findById(eventId);
                         if (!event) throw new Error('Event not found');
-                        const updated = await Event.findOneAndUpdate(
-                            { _id: eventId, availableTickets: { $gte: quantity } },
-                            { $inc: { availableTickets: -quantity, soldTickets: quantity } },
-                            { new: true }
-                        );
+                        const updated = await Event.findOneAndUpdate({ _id: eventId, availableTickets: { $gte: quantity } }, { $inc: { availableTickets: -quantity, soldTickets: quantity } }, { new: true });
                         if (!updated) throw new Error('Sold out');
                         const ticket = await Ticket.create({ user: req.user.id, event: eventId, quantity, status: 'Confirmed' });
                         await invalidateEventCache();
-                        
-                        // Async success actions
                         setImmediate(async () => {
                             try {
                                 const pdf = await generateTicketPDF(ticket, updated, req.user);
                                 await sendTicketEmail(req.user, updated, pdf);
                             } catch (e) { console.error("📧 Email Fail:", e.message); }
                         });
-
                         responseData = { status: 'success', message: `Booked ${quantity} tickets! ID: ${ticket._id}` };
                     } catch (err) { responseData = { status: 'error', error: err.message }; }
                 }
@@ -136,22 +129,20 @@ const handleChat = asyncHandler(async (req, res) => {
 
             const responseText = result.response.text();
             if (responseText) {
-                console.log(`✅ [Gemini Engineering] Response established via ${config.model}`);
                 return res.status(200).json({ responseText });
             }
 
         } catch (err) {
-            console.warn(`⚠️ [Gemini Failed] ${config.model} (${config.version}):`, err.message);
+            console.warn(`⚠️ [Failed] ${modelPath}:`, err.message);
             lastError = err;
-            continue; // Proceed to next fallback tier
+            continue;
         }
     }
 
-    // EXHAUSTIVE FAIL: Return detailed error for region analysis
     res.status(500).json({
-        message: 'AI Assistant currently unavailable in this region.',
-        error: lastError ? lastError.message : 'All model tiers failed.',
-        help: 'Verify the Generative Language API is enabled in your Google Cloud Console.'
+        message: 'AI Assistant unavailable in this region.',
+        error: lastError?.message,
+        debug: { discovered: discoveredModels, tried: debugInfo.attempts }
     });
 });
 
