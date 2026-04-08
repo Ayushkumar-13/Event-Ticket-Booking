@@ -24,21 +24,25 @@ const handleChat = asyncHandler(async (req, res) => {
     }
 
     const key = rawKey.trim();
-    const genAI = new GoogleGenerativeAI(key);
+
+    // ✅ FIX: Use v1 instead of v1beta (SDK default)
+    // v1 has better model availability and stability on Vercel
+    const genAI = new GoogleGenerativeAI(key, {
+        apiVersion: "v1"
+    });
 
     const formattedHistory = previousHistory.map(msg => ({
         role: msg.role === 'ai' ? 'model' : 'user',
         parts: [{ text: msg.text }]
     }));
 
-    // ✅ UPDATED MODEL LIST — All stable, available models (2025)
     // Ordered from newest/best to oldest fallback
-    let modelsToTry = [
-        "gemini-2.0-flash",            // ✅ Newest stable flash model
-        "gemini-2.0-flash-lite",       // ✅ Lighter version of 2.0 flash
-        "gemini-1.5-flash",            // ✅ Proven stable
-        "gemini-1.5-flash-8b",         // ✅ Smaller/faster 1.5 flash
-        "gemini-1.5-pro",              // ✅ Most capable 1.5
+    const modelsToTry = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
     ];
 
     let lastError = null;
