@@ -6,46 +6,47 @@ const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
 
-const GEMINI_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_ROOT_BETA = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_ROOT_V1 = 'https://generativelanguage.googleapis.com/v1';
 
-// Helper: Discover what models are actually available for this API Key
 async function getAvailableModels(apiKey) {
     try {
-        const res = await fetch(`${GEMINI_ROOT}/models?key=${apiKey}`);
+        const res = await fetch(`${GEMINI_ROOT_BETA}/models?key=${apiKey}`);
         const data = await res.json();
         if (!res.ok) return [];
-        
-        // Filter for models that support generating content
         return data.models
             .filter(m => m.supportedGenerationMethods.includes('generateContent'))
-            .map(m => m.name); // Usually 'models/gemini-1.5-flash' etc.
+            .map(m => m.name);
     } catch (e) {
         console.error("🔍 Discovery failed:", e.message);
         return [];
     }
 }
 
-async function callGeminiREST(apiKey, modelPath, contents) {
-    // modelPath is already the full path like 'models/gemini-1.5-flash'
-    const url = `${GEMINI_ROOT}/${modelPath}:generateContent?key=${apiKey}`;
+async function callGeminiREST(apiKey, modelPath, contents, useBeta = true) {
+    const root = useBeta ? GEMINI_ROOT_BETA : GEMINI_ROOT_V1;
+    const url = `${root}/${modelPath}:generateContent?key=${apiKey}`;
     
+    // Tools and System Instructions are ONLY for v1beta
     const body = {
-        system_instruction: { parts: [{ text: 'You are a helpful ticketing assistant. You can search for events and book tickets for users.' }] },
-        tools: [{
-            functionDeclarations: [
-                {
-                    name: 'searchEvents',
-                    description: 'Search for events',
-                    parameters: { type: 'OBJECT', properties: { query: { type: 'STRING' }, category: { type: 'STRING' }, maxPrice: { type: 'NUMBER' } } }
-                },
-                {
-                    name: 'bookTickets',
-                    description: 'Book tickets',
-                    parameters: { type: 'OBJECT', properties: { eventId: { type: 'STRING' }, quantity: { type: 'NUMBER' } }, required: ['eventId', 'quantity'] }
-                }
-            ]
-        }],
-        contents
+        contents,
+        ...(useBeta && {
+            system_instruction: { parts: [{ text: 'You are a helpful ticketing assistant for EventTix. You can search for events and book tickets.' }] },
+            tools: [{
+                functionDeclarations: [
+                    {
+                        name: 'searchEvents',
+                        description: 'Search for events',
+                        parameters: { type: 'OBJECT', properties: { query: { type: 'STRING' }, category: { type: 'STRING' }, maxPrice: { type: 'NUMBER' } } }
+                    },
+                    {
+                        name: 'bookTickets',
+                        description: 'Book tickets',
+                        parameters: { type: 'OBJECT', properties: { eventId: { type: 'STRING' }, quantity: { type: 'NUMBER' } }, required: ['eventId', 'quantity'] }
+                    }
+                ]
+            }]
+        })
     };
 
     const res = await fetch(url, {
@@ -66,20 +67,6 @@ const handleChat = asyncHandler(async (req, res) => {
     const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     if (!apiKey) throw new ApiError(500, 'GEMINI_API_KEY missing');
 
-    // 1. DISCOVER MODELS
-    let models = await getAvailableModels(apiKey);
-    
-    // Priority Fallback if discovery fails or is empty
-    const fallbacks = [
-        'models/gemini-1.5-flash',
-        'models/gemini-1.5-flash-latest',
-        'models/gemini-pro',
-        'models/gemini-1.0-pro'
-    ];
-    
-    // Combine discovered models with our fallbacks (removing duplicates)
-    const modelsToTry = [...new Set([...models, ...fallbacks])];
-    
     const contents = [
         ...previousHistory.map(msg => ({
             role: msg.role === 'ai' ? 'model' : 'user',
@@ -89,25 +76,22 @@ const handleChat = asyncHandler(async (req, res) => {
     ];
 
     let lastError = null;
-    const debugInfo = { attempted: [] };
+    let debugInfo = { v1beta_attempts: [], v1_stable_attempt: null };
 
-    for (const modelPath of modelsToTry) {
+    // 1. TRY ADVANCED v1beta WITH TOOLS
+    const betaModels = ['models/gemini-1.5-flash', 'models/gemini-1.5-flash-latest', 'models/gemini-pro'];
+    for (const modelPath of betaModels) {
         try {
-            debugInfo.attempted.push(modelPath);
-            console.log(`🤖 [REST Discovery] Trying: ${modelPath}...`);
-
-            let data = await callGeminiREST(apiKey, modelPath, contents);
+            debugInfo.v1beta_attempts.push(modelPath);
+            let data = await callGeminiREST(apiKey, modelPath, contents, true);
             
-            // Tool loop
             let turnCount = 0;
             while (turnCount < 2) {
                 const candidates = data?.candidates?.[0]?.content?.parts || [];
                 const fnCall = candidates.find(p => p.functionCall)?.functionCall;
                 if (!fnCall) break;
 
-                console.log(`🔧 [Tool] Executing: ${fnCall.name}`);
                 let responseData = { status: 'error', message: 'Not found' };
-
                 if (fnCall.name === 'searchEvents') {
                     const { query, category, maxPrice } = fnCall.args;
                     let filter = {};
@@ -136,21 +120,36 @@ const handleChat = asyncHandler(async (req, res) => {
                 }
 
                 contents.push({ role: 'model', parts: [{ functionCall: fnCall }] }, { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: responseData } }] });
-                data = await callGeminiREST(apiKey, modelPath, contents);
+                data = await callGeminiREST(apiKey, modelPath, contents, true);
                 turnCount++;
             }
 
-            const final = data?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I'm having trouble with that.";
-            return res.status(200).json({ responseText: final });
-
+            const final = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (final) return res.status(200).json({ responseText: final });
         } catch (err) {
-            console.warn(`⚠️ [REST] ${modelPath} failed:`, err.message);
+            console.warn(`⚠️ [v1beta] ${modelPath} failed:`, err.message);
             lastError = err;
-            continue;
         }
     }
 
-    res.status(500).json({ message: 'AI unavailable.', error: lastError?.message, debug: debugInfo });
+    // 2. EMERGENCY v1 STABLE FALLBACK (No tools, just chat)
+    try {
+        debugInfo.v1_stable_attempt = 'models/gemini-1.5-flash';
+        console.log("🚑 [Emergency] Attempting Stable v1 fallback...");
+        // Re-use contents but remove function call history if any
+        const simpleContents = contents.filter(c => !c.parts.some(p => p.functionCall || p.functionResponse));
+        const stableData = await callGeminiREST(apiKey, 'models/gemini-1.5-flash', simpleContents, false);
+        const stableText = stableData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (stableText) return res.status(200).json({ responseText: stableText });
+    } catch (stableErr) {
+        console.error("❌ [Emergency] v1 fallback also failed:", stableErr.message);
+    }
+
+    res.status(500).json({ 
+        message: 'AI Assistant currently unavailable in this deployment region.', 
+        error: lastError?.message, 
+        debug: debugInfo 
+    });
 });
 
 module.exports = { handleChat };
