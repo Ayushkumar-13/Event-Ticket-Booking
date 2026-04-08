@@ -23,9 +23,16 @@ const connection = new IORedis(process.env.REDIS_URI || 'redis://127.0.0.1:6379'
 });
 
 connection.on('error', (err) => {
-    // Suppress verbose connection errors after exhaustion
-    if (err.message && !err.message.includes('getaddrinfo ENOTFOUND') && !err.message.includes('ECONNRESET')) {
-        console.error('BullMQ Redis Error:', err.message);
+    // Suppress verbose connection errors after exhaustion or timeout
+    if (err && err.message) {
+        if (
+            !err.message.includes('getaddrinfo ENOTFOUND') && 
+            !err.message.includes('ECONNRESET') &&
+            !err.message.includes('ETIMEDOUT') &&
+            !err.message.includes('ECONNREFUSED')
+        ) {
+            console.error('BullMQ Redis Error:', err.message);
+        }
     }
 });
 

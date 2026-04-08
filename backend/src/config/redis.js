@@ -8,23 +8,28 @@ const redisClient = redis.createClient({
     url: process.env.REDIS_URI || 'redis://127.0.0.1:6379',
     socket: {
         family: 4, // Force IPv4
+        connectTimeout: 2000, // Stop waiting after 2 seconds locally
         reconnectStrategy: (retries) => {
-            // Give up after 3 tries if Redis is completely unavailable
-            // This allows the app to fallback to just using MongoDB without crashing
+            // Give up after 3 tries if Redis is unavailable
             if (retries > 3) {
-                // Silently fallback to MongoDB without logging warnings to the terminal
                 redisClient.removeAllListeners('error');
-                return new Error('Redis retry exhausted');
+                return new Error('Redis Unavailable');
             }
-            return Math.min(retries * 50, 1000);
+            return Math.min(retries * 50, 500);
         }
     }
 });
 
 redisClient.on('error', (err) => {
-    // Suppress verbose error logging if we already know it's down or can't resolve
-    if (err.message !== 'Redis retry exhausted' && !err.message.includes('ENOTFOUND') && !err.message.includes('ECONNRESET')) {
-        console.error('Redis Client Error:', err.message);
+    // Suppress verbose error logging for common connection issues
+    if (
+        err.message !== 'Redis Unavailable' && 
+        !err.message.includes('ENOTFOUND') && 
+        !err.message.includes('ECONNRESET') &&
+        !err.message.includes('ETIMEDOUT') &&
+        !err.message.includes('ECONNREFUSED')
+    ) {
+        console.error('Redis Client:', err.message);
     }
 });
 
