@@ -31,16 +31,38 @@ const handleChat = asyncHandler(async (req, res) => {
         parts: [{ text: msg.text }]
     }));
 
-    // List of models to try. We start with 'gemini-pro' as it is the most widely supported globally.
-    const modelsToTry = ["gemini-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+    // DISCOVERY MODE: Let's see what models this API key actually supports
+    let modelsToTry = ["gemini-1.5-flash", "gemini-pro", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"];
+    let debugInfo = { attempts: [] };
+
+    try {
+        console.log("🔍 [Gemini] Auto-discovering models for this API key...");
+        // listModels() is the best way to find out what the user project has enabled
+        // but it can fail based on API key permissions, so we use it as a hint
+        const modelList = await genAI.listModels();
+        if (modelList && modelList.models) {
+            const discovered = modelList.models
+                .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+                .map(m => m.name.replace('models/', ''));
+            
+            if (discovered.length > 0) {
+                console.log("✨ [Gemini] Discovered working models:", discovered);
+                // Prepend discovered models to our list to prioritize them
+                modelsToTry = [...new Set([...discovered, ...modelsToTry])];
+            }
+        }
+    } catch (discoveryErr) {
+        console.warn("⚠️ [Gemini] Discovery failed, falling back to static list:", discoveryErr.message);
+        debugInfo.discoveryError = discoveryErr.message;
+    }
     
     let lastError = null;
-    let attempts = [];
 
-    // AGGRESSIVE RETRY LOOP: We try every model until one successfully sends a message
     for (const modelName of modelsToTry) {
         try {
-            attempts.push(modelName);
+            debugInfo.attempts.push(modelName);
+            console.log(`🤖 [Gemini] Trying: ${modelName}...`);
+            
             const model = genAI.getGenerativeModel({
                 model: modelName,
                 systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users.",
@@ -48,24 +70,24 @@ const handleChat = asyncHandler(async (req, res) => {
                     functionDeclarations: [
                         {
                             name: "searchEvents",
-                            description: "Search for events based on query or price.",
+                            description: "Search for events",
                             parameters: {
                                 type: "OBJECT",
                                 properties: {
-                                    query: { type: "STRING", description: "Search term" },
-                                    category: { type: "STRING", description: "Category" },
-                                    maxPrice: { type: "NUMBER", description: "Max price" }
+                                    query: { type: "STRING" },
+                                    category: { type: "STRING" },
+                                    maxPrice: { type: "NUMBER" }
                                 }
                             }
                         },
                         {
                             name: "bookTickets",
-                            description: "Book tickets for an event ID.",
+                            description: "Book tickets",
                             parameters: {
                                 type: "OBJECT",
                                 properties: {
-                                    eventId: { type: "STRING", description: "The 24-char hex ID" },
-                                    quantity: { type: "NUMBER", description: "Number of tickets" }
+                                    eventId: { type: "STRING" },
+                                    quantity: { type: "NUMBER" }
                                 },
                                 required: ["eventId", "quantity"]
                             }
@@ -77,13 +99,16 @@ const handleChat = asyncHandler(async (req, res) => {
             const chat = model.startChat({ history: formattedHistory });
             let result = await chat.sendMessage(message);
 
+            // If we're here, we found a winner!
+            console.log(`✅ [Gemini] Successfully used: ${modelName}`);
+
             // Handle potential tool calls
             let functionCalls = result.response.functionCalls();
             let turnCount = 0;
 
             while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
                 const call = functionCalls[0];
-                let functionResponseData = {};
+                let functionResponseData = { status: "error", error: "Not found" };
 
                 if (call.name === "searchEvents") {
                     const { query, category, maxPrice } = call.args;
@@ -91,7 +116,6 @@ const handleChat = asyncHandler(async (req, res) => {
                     if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { location: { $regex: query, $options: 'i' } }];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
-
                     const events = await Event.find(filter).limit(5);
                     functionResponseData = { status: "success", results: events };
                 } 
@@ -106,14 +130,10 @@ const handleChat = asyncHandler(async (req, res) => {
                             { new: true }
                         );
                         if (!updatedEvent) throw new Error('Sold out');
-
                         const ticket = await Ticket.create({ user: req.user.id, event: eventId, quantity, status: 'Confirmed' });
                         await invalidateEventCache();
-                        
                         functionResponseData = { status: "success", message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}` };
-                    } catch (err) {
-                        functionResponseData = { status: "error", error: err.message };
-                    }
+                    } catch (err) { functionResponseData = { status: "error", error: err.message }; }
                 }
 
                 result = await chat.sendMessage([{ functionResponse: { name: call.name, response: functionResponseData } }]);
@@ -121,26 +141,20 @@ const handleChat = asyncHandler(async (req, res) => {
                 turnCount++;
             }
 
-            let finalOutput = "I'm sorry, I'm having trouble phrasing that.";
-            try { finalOutput = result.response.text(); } catch (e) {
-                if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) finalOutput = result.response.candidates[0].content.parts[0].text;
-            }
-
+            let finalOutput = result.response.text();
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.error(`⚠️ [Gemini] Model ${modelName} failed:`, err.message);
+            console.error(`⚠️ [Gemini] ${modelName} failed:`, err.message);
             lastError = err;
-            // Always continue to the next model for ANY error in the fallback phase
             continue; 
         }
     }
 
-    // ALL MODELS FAILED
     res.status(500).json({
-        message: `AI Assistant is currently unavailable in this deployment region.`,
-        error: lastError ? lastError.message : "All available models failed.",
-        debug: { attempted: attempts }
+        message: "AI Assistant unavailable in this region. Our server is discovering alternative models.",
+        error: lastError ? lastError.message : "All models failed.",
+        debug: debugInfo
     });
 });
 
