@@ -31,15 +31,14 @@ const handleChat = asyncHandler(async (req, res) => {
         parts: [{ text: msg.text }]
     }));
 
-    // ULTRA-COMPATIBLE FALLBACK LIST
-    // We use the full 'models/' prefix which is more reliable in production environments like Vercel.
+    // ✅ UPDATED MODEL LIST — All stable, available models (2025)
+    // Ordered from newest/best to oldest fallback
     let modelsToTry = [
-        "models/gemini-1.5-flash-latest",
-        "models/gemini-1.5-flash",
-        "models/gemini-pro", 
-        "models/gemini-1.0-pro",
-        "gemini-1.5-flash",
-        "gemini-pro"
+        "gemini-2.0-flash",            // ✅ Newest stable flash model
+        "gemini-2.0-flash-lite",       // ✅ Lighter version of 2.0 flash
+        "gemini-1.5-flash",            // ✅ Proven stable
+        "gemini-1.5-flash-8b",         // ✅ Smaller/faster 1.5 flash
+        "gemini-1.5-pro",              // ✅ Most capable 1.5
     ];
 
     let lastError = null;
@@ -48,8 +47,8 @@ const handleChat = asyncHandler(async (req, res) => {
     for (const modelName of modelsToTry) {
         try {
             debugInfo.attempts.push(modelName);
-            console.log(`🤖 [Gemini] Survival Attempt: ${modelName}...`);
-            
+            console.log(`🤖 [Gemini] Trying model: ${modelName}...`);
+
             const model = genAI.getGenerativeModel({
                 model: modelName,
                 systemInstruction: "You are a helpful ticketing assistant. You can search for events and book tickets.",
@@ -86,8 +85,7 @@ const handleChat = asyncHandler(async (req, res) => {
             const chat = model.startChat({ history: formattedHistory });
             let result = await chat.sendMessage(message);
 
-            // SUCCESS! We found a working model in the Vercel region
-            console.log(`✅ [Gemini] Survival Success with: ${modelName}`);
+            console.log(`✅ [Gemini] Success with model: ${modelName}`);
 
             let functionCalls = result.response.functionCalls();
             let turnCount = 0;
@@ -99,12 +97,15 @@ const handleChat = asyncHandler(async (req, res) => {
                 if (call.name === "searchEvents") {
                     const { query, category, maxPrice } = call.args;
                     let filter = {};
-                    if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { location: { $regex: query, $options: 'i' } }];
+                    if (query) filter.$or = [
+                        { title: { $regex: query, $options: 'i' } },
+                        { location: { $regex: query, $options: 'i' } }
+                    ];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
                     const events = await Event.find(filter).limit(3);
                     functionResponseData = { status: "success", results: events };
-                } 
+                }
                 else if (call.name === "bookTickets") {
                     const { eventId, quantity } = call.args;
                     try {
@@ -116,20 +117,32 @@ const handleChat = asyncHandler(async (req, res) => {
                             { new: true }
                         );
                         if (!updatedEvent) throw new Error('Sold out');
-                        const ticket = await Ticket.create({ user: req.user.id, event: eventId, quantity, status: 'Confirmed' });
+                        const ticket = await Ticket.create({
+                            user: req.user.id,
+                            event: eventId,
+                            quantity,
+                            status: 'Confirmed'
+                        });
                         await invalidateEventCache();
-                        functionResponseData = { status: "success", message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}` };
-                    } catch (err) { functionResponseData = { status: "error", error: err.message }; }
+                        functionResponseData = {
+                            status: "success",
+                            message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}`
+                        };
+                    } catch (err) {
+                        functionResponseData = { status: "error", error: err.message };
+                    }
                 }
 
-                result = await chat.sendMessage([{ functionResponse: { name: call.name, response: functionResponseData } }]);
+                result = await chat.sendMessage([{
+                    functionResponse: { name: call.name, response: functionResponseData }
+                }]);
                 functionCalls = result.response.functionCalls();
                 turnCount++;
             }
 
             let finalOutput = "I'm sorry, I'm having trouble with that request right now.";
-            try { 
-                finalOutput = result.response.text(); 
+            try {
+                finalOutput = result.response.text();
             } catch (e) {
                 if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
                     finalOutput = result.response.candidates[0].content.parts[0].text;
@@ -139,17 +152,16 @@ const handleChat = asyncHandler(async (req, res) => {
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.warn(`⚠️ [Gemini] Model ${modelName} failed on Vercel:`, err.message);
+            console.warn(`⚠️ [Gemini] Model ${modelName} failed:`, err.message);
             lastError = err;
-            // Catch 404, 500, or regional blocks and try the next ID
             continue;
         }
     }
 
     // ALL ATTEMPTS FAILED
     res.status(500).json({
-        message: "AI Assistant is currently facing regional connectivity issues.",
-        error: lastError ? lastError.message : "Final fallback failed.",
+        message: "AI Assistant is currently unavailable. Please try again later.",
+        error: lastError ? lastError.message : "All model fallbacks failed.",
         debug: debugInfo
     });
 });
