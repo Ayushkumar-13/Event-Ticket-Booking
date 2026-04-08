@@ -31,41 +31,28 @@ const handleChat = asyncHandler(async (req, res) => {
         parts: [{ text: msg.text }]
     }));
 
-    // DISCOVERY MODE: Let's see what models this API key actually supports
-    let modelsToTry = ["gemini-1.5-flash", "gemini-pro", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"];
-    let debugInfo = { attempts: [] };
+    // ULTRA-COMPATIBLE FALLBACK LIST
+    // We use the full 'models/' prefix which is more reliable in production environments like Vercel.
+    let modelsToTry = [
+        "models/gemini-1.5-flash-latest",
+        "models/gemini-1.5-flash",
+        "models/gemini-pro", 
+        "models/gemini-1.0-pro",
+        "gemini-1.5-flash",
+        "gemini-pro"
+    ];
 
-    try {
-        console.log("🔍 [Gemini] Auto-discovering models for this API key...");
-        // listModels() is the best way to find out what the user project has enabled
-        // but it can fail based on API key permissions, so we use it as a hint
-        const modelList = await genAI.listModels();
-        if (modelList && modelList.models) {
-            const discovered = modelList.models
-                .filter(m => m.supportedGenerationMethods.includes('generateContent'))
-                .map(m => m.name.replace('models/', ''));
-            
-            if (discovered.length > 0) {
-                console.log("✨ [Gemini] Discovered working models:", discovered);
-                // Prepend discovered models to our list to prioritize them
-                modelsToTry = [...new Set([...discovered, ...modelsToTry])];
-            }
-        }
-    } catch (discoveryErr) {
-        console.warn("⚠️ [Gemini] Discovery failed, falling back to static list:", discoveryErr.message);
-        debugInfo.discoveryError = discoveryErr.message;
-    }
-    
     let lastError = null;
+    let debugInfo = { attempts: [] };
 
     for (const modelName of modelsToTry) {
         try {
             debugInfo.attempts.push(modelName);
-            console.log(`🤖 [Gemini] Trying: ${modelName}...`);
+            console.log(`🤖 [Gemini] Survival Attempt: ${modelName}...`);
             
             const model = genAI.getGenerativeModel({
                 model: modelName,
-                systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users.",
+                systemInstruction: "You are a helpful ticketing assistant. You can search for events and book tickets.",
                 tools: [{
                     functionDeclarations: [
                         {
@@ -99,16 +86,15 @@ const handleChat = asyncHandler(async (req, res) => {
             const chat = model.startChat({ history: formattedHistory });
             let result = await chat.sendMessage(message);
 
-            // If we're here, we found a winner!
-            console.log(`✅ [Gemini] Successfully used: ${modelName}`);
+            // SUCCESS! We found a working model in the Vercel region
+            console.log(`✅ [Gemini] Survival Success with: ${modelName}`);
 
-            // Handle potential tool calls
             let functionCalls = result.response.functionCalls();
             let turnCount = 0;
 
-            while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
+            while (functionCalls && functionCalls.length > 0 && turnCount < 2) {
                 const call = functionCalls[0];
-                let functionResponseData = { status: "error", error: "Not found" };
+                let functionResponseData = { status: "error", message: "Not found" };
 
                 if (call.name === "searchEvents") {
                     const { query, category, maxPrice } = call.args;
@@ -116,7 +102,7 @@ const handleChat = asyncHandler(async (req, res) => {
                     if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { location: { $regex: query, $options: 'i' } }];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
-                    const events = await Event.find(filter).limit(5);
+                    const events = await Event.find(filter).limit(3);
                     functionResponseData = { status: "success", results: events };
                 } 
                 else if (call.name === "bookTickets") {
@@ -141,19 +127,29 @@ const handleChat = asyncHandler(async (req, res) => {
                 turnCount++;
             }
 
-            let finalOutput = result.response.text();
+            let finalOutput = "I'm sorry, I'm having trouble with that request right now.";
+            try { 
+                finalOutput = result.response.text(); 
+            } catch (e) {
+                if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    finalOutput = result.response.candidates[0].content.parts[0].text;
+                }
+            }
+
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.error(`⚠️ [Gemini] ${modelName} failed:`, err.message);
+            console.warn(`⚠️ [Gemini] Model ${modelName} failed on Vercel:`, err.message);
             lastError = err;
-            continue; 
+            // Catch 404, 500, or regional blocks and try the next ID
+            continue;
         }
     }
 
+    // ALL ATTEMPTS FAILED
     res.status(500).json({
-        message: "AI Assistant unavailable in this region. Our server is discovering alternative models.",
-        error: lastError ? lastError.message : "All models failed.",
+        message: "AI Assistant is currently facing regional connectivity issues.",
+        error: lastError ? lastError.message : "Final fallback failed.",
         debug: debugInfo
     });
 });
