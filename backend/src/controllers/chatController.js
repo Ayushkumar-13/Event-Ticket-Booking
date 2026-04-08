@@ -20,7 +20,6 @@ const handleChat = asyncHandler(async (req, res) => {
 
     const rawKey = process.env.GEMINI_API_KEY;
     if (!rawKey) {
-        console.error("❌ [Gemini Configuration] GEMINI_API_KEY is missing from environment variables");
         throw new ApiError(500, 'Server AI Configuration Missing: GEMINI_API_KEY not found in dashboard settings.');
     }
 
@@ -32,41 +31,41 @@ const handleChat = asyncHandler(async (req, res) => {
         parts: [{ text: msg.text }]
     }));
 
-    // List of models to try in order of preference
-    const modelsToTry = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-pro", "models/gemini-1.5-flash"];
+    // List of models to try. We start with 'gemini-pro' as it is the most widely supported globally.
+    const modelsToTry = ["gemini-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
     
     let lastError = null;
+    let attempts = [];
 
-    // ACTIVE RETRY LOOP: We try each model until one successfully sends a message
+    // AGGRESSIVE RETRY LOOP: We try every model until one successfully sends a message
     for (const modelName of modelsToTry) {
         try {
-            console.log(`🤖 [Gemini] Attempting full chat turn with model: ${modelName}...`);
-            
+            attempts.push(modelName);
             const model = genAI.getGenerativeModel({
                 model: modelName,
-                systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users. If a user asks to book tickets but you don't know the exact Event ID, search for the event first, show them the options, and ask for confirmation before booking. If they provide enough detail that uniquely identifies an event, you can book it directly using the bookTickets tool. Always be polite and conversational. If you book successfully, tell the user their Ticket ID.",
+                systemInstruction: "You are a helpful, enthusiastic ticketing assistant for an event ticketing app. You can search for events and book tickets for users.",
                 tools: [{
                     functionDeclarations: [
                         {
                             name: "searchEvents",
-                            description: "Search for events based on a query, category, or maximum price.",
+                            description: "Search for events based on query or price.",
                             parameters: {
                                 type: "OBJECT",
                                 properties: {
-                                    query: { type: "STRING", description: "Search term for naming or location" },
-                                    category: { type: "STRING", description: "Event category (music, tech, etc.)" },
-                                    maxPrice: { type: "NUMBER", description: "Maximum price" }
+                                    query: { type: "STRING", description: "Search term" },
+                                    category: { type: "STRING", description: "Category" },
+                                    maxPrice: { type: "NUMBER", description: "Max price" }
                                 }
                             }
                         },
                         {
                             name: "bookTickets",
-                            description: "Book tickets for a specific event. Requires an Event ID and quantity.",
+                            description: "Book tickets for an event ID.",
                             parameters: {
                                 type: "OBJECT",
                                 properties: {
-                                    eventId: { type: "STRING", description: "The 24-character hex ID of the event" },
-                                    quantity: { type: "NUMBER", description: "Number of tickets to book" }
+                                    eventId: { type: "STRING", description: "The 24-char hex ID" },
+                                    quantity: { type: "NUMBER", description: "Number of tickets" }
                                 },
                                 required: ["eventId", "quantity"]
                             }
@@ -76,12 +75,7 @@ const handleChat = asyncHandler(async (req, res) => {
             });
 
             const chat = model.startChat({ history: formattedHistory });
-            
-            // This is where the 404 usually happens if the model is unavailable
             let result = await chat.sendMessage(message);
-
-            // If we reach here, the model is valid and the message was sent!
-            console.log(`✅ [Gemini] Successfully using model: ${modelName}`);
 
             // Handle potential tool calls
             let functionCalls = result.response.functionCalls();
@@ -89,108 +83,64 @@ const handleChat = asyncHandler(async (req, res) => {
 
             while (functionCalls && functionCalls.length > 0 && turnCount < 3) {
                 const call = functionCalls[0];
-                console.log(`🤖 [Gemini Tool] Model ${modelName} executing: ${call.name}`);
-
                 let functionResponseData = {};
 
                 if (call.name === "searchEvents") {
                     const { query, category, maxPrice } = call.args;
                     let filter = {};
-                    if (query) {
-                        filter.$or = [
-                            { title: { $regex: query, $options: 'i' } },
-                            { location: { $regex: query, $options: 'i' } }
-                        ];
-                    }
+                    if (query) filter.$or = [{ title: { $regex: query, $options: 'i' } }, { location: { $regex: query, $options: 'i' } }];
                     if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
                     if (maxPrice) filter.price = { $lte: maxPrice };
 
-                    const events = await Event.find(filter).limit(5).select('_id title date time price location category availableTickets');
-                    functionResponseData = { status: "success", results: events.length > 0 ? events : "No events found." };
+                    const events = await Event.find(filter).limit(5);
+                    functionResponseData = { status: "success", results: events };
                 } 
                 else if (call.name === "bookTickets") {
                     const { eventId, quantity } = call.args;
                     try {
                         const event = await Event.findById(eventId);
                         if (!event) throw new Error('Event not found');
-                        if (event.availableTickets < quantity) throw new Error(`Only ${event.availableTickets} tickets left`);
-
                         const updatedEvent = await Event.findOneAndUpdate(
                             { _id: eventId, availableTickets: { $gte: quantity } },
                             { $inc: { availableTickets: -quantity, soldTickets: quantity } },
                             { new: true }
                         );
+                        if (!updatedEvent) throw new Error('Sold out');
 
-                        if (!updatedEvent) throw new Error('Race condition: Tickets sold out.');
-
-                        const ticket = await Ticket.create({
-                            user: req.user.id,
-                            event: eventId,
-                            quantity,
-                            status: 'Confirmed'
-                        });
-
+                        const ticket = await Ticket.create({ user: req.user.id, event: eventId, quantity, status: 'Confirmed' });
                         await invalidateEventCache();
                         
-                        // Async Email
-                        setImmediate(async () => {
-                            try {
-                                const userForEmail = { id: req.user.id, email: req.user.email, name: req.user.name };
-                                const eventForEmail = { title: updatedEvent.title, location: updatedEvent.location, date: updatedEvent.date, time: updatedEvent.time, price: updatedEvent.price };
-                                const ticketForEmail = { _id: ticket._id, quantity: ticket.quantity, status: ticket.status };
-                                const pdfBuffer = await generateTicketPDF(ticketForEmail, eventForEmail, userForEmail);
-                                await sendTicketEmail(userForEmail, eventForEmail, pdfBuffer);
-                            } catch (e) { console.error("📧 Email Error:", e.message); }
-                        });
-
                         functionResponseData = { status: "success", message: `Booked ${quantity} tickets! Ticket ID: ${ticket._id}` };
                     } catch (err) {
                         functionResponseData = { status: "error", error: err.message };
                     }
                 }
 
-                result = await chat.sendMessage([{
-                    functionResponse: { name: call.name, response: functionResponseData }
-                }]);
-
+                result = await chat.sendMessage([{ functionResponse: { name: call.name, response: functionResponseData } }]);
                 functionCalls = result.response.functionCalls();
                 turnCount++;
             }
 
-            // Final response formatting
             let finalOutput = "I'm sorry, I'm having trouble phrasing that.";
-            try {
-                finalOutput = result.response.text();
-            } catch (e) {
-                if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    finalOutput = result.response.candidates[0].content.parts[0].text;
-                }
+            try { finalOutput = result.response.text(); } catch (e) {
+                if (result.response.candidates?.[0]?.content?.parts?.[0]?.text) finalOutput = result.response.candidates[0].content.parts[0].text;
             }
 
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.error(`⚠️ [Gemini] Model ${modelName} failed during call:`, err.message);
+            console.error(`⚠️ [Gemini] Model ${modelName} failed:`, err.message);
             lastError = err;
-            
-            // If it's a 404/Not Found, we CONTINUE to the next model
-            if (err.message.toLowerCase().includes('not found') || err.message.toLowerCase().includes('404')) {
-                continue;
-            }
-            
-            // For other critical errors (401, 429), we stop here
-            break;
+            // Always continue to the next model for ANY error in the fallback phase
+            continue; 
         }
     }
 
     // ALL MODELS FAILED
-    const isConfigError = lastError?.message.includes('API key not valid');
-    
     res.status(500).json({
-        message: isConfigError 
-            ? "Server Error: The provided Gemini API Key is invalid." 
-            : "AI Assistant is currently unavailable on this server region. Please check your Dashboard API settings.",
-        error: lastError ? lastError.message : "All available models failed to respond."
+        message: `AI Assistant is currently unavailable in this deployment region.`,
+        error: lastError ? lastError.message : "All available models failed.",
+        debug: { attempted: attempts }
     });
 });
 
