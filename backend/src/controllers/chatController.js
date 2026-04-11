@@ -7,19 +7,11 @@ const { invalidateEventCache } = require('../utils/cacheHelper');
 const ApiError = require('../utils/ApiError');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NO SDK — @google/generative-ai hardcodes v1beta and cannot be overridden.
-// We call Google's REST API directly using v1 with plain fetch.
+// Uses Gemini 2.5 Flash — free tier, fast, supports tools & systemInstruction
+// Free tier limits: 10 RPM, 500 RPD via Google AI Studio key
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ✅ Flagship models for April 2026 (Pro for reasoning, Flash for speed)
-const MODELS_TO_TRY = [
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash-latest',
-    'gemini-1.5-flash-latest',
-];
+const FREE_MODEL = 'gemini-2.5-flash-preview-04-17';
 
 const SYSTEM_INSTRUCTION = {
     parts: [{ text: 'You are a helpful ticketing assistant. You help users search for events and book tickets.' }]
@@ -54,9 +46,8 @@ const TOOLS = [{
     ]
 }];
 
-// Direct REST call to Gemini v1beta — supports systemInstruction and tools reliably
-async function callGemini(apiKey, modelName, contents) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+async function callGemini(apiKey, contents) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${FREE_MODEL}:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
         method: 'POST',
@@ -103,7 +94,6 @@ const handleChat = asyncHandler(async (req, res) => {
         throw new ApiError(500, 'GEMINI_API_KEY not found in environment variables.');
     }
 
-    // Build Gemini REST contents array from chat history
     const contents = [
         ...previousHistory.map(msg => ({
             role: msg.role === 'ai' ? 'model' : 'user',
@@ -112,104 +102,91 @@ const handleChat = asyncHandler(async (req, res) => {
         { role: 'user', parts: [{ text: message }] }
     ];
 
-    let lastError = null;
-    const debugInfo = { attempts: [] };
+    try {
+        console.log(`🤖 [Gemini] Using free model: ${FREE_MODEL}`);
+        let data = await callGemini(rawKey, contents);
 
-    for (const modelName of MODELS_TO_TRY) {
-        try {
-            debugInfo.attempts.push(modelName);
-            console.log(`🤖 [Gemini v1] Trying: ${modelName}`);
+        // Handle tool/function calls — max 2 turns
+        let turnCount = 0;
+        while (turnCount < 2) {
+            const fnCall = extractFunctionCall(data);
+            if (!fnCall) break;
 
-            let data = await callGemini(rawKey, modelName, contents);
-            console.log(`✅ [Gemini v1beta] Success: ${modelName}`);
+            console.log(`🔧 [Tool] Calling: ${fnCall.name}`, fnCall.args);
+            let functionResponseData = { status: 'error', message: 'Unknown function' };
 
-            // Handle tool/function calls — max 2 turns
-            let turnCount = 0;
-            while (turnCount < 2) {
-                const fnCall = extractFunctionCall(data);
-                if (!fnCall) break;
+            if (fnCall.name === 'searchEvents') {
+                const { query, category, maxPrice } = fnCall.args;
+                let filter = {};
+                if (query) filter.$or = [
+                    { title: { $regex: query, $options: 'i' } },
+                    { location: { $regex: query, $options: 'i' } }
+                ];
+                if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
+                if (maxPrice) filter.price = { $lte: maxPrice };
 
-                console.log(`🔧 [Tool] Calling: ${fnCall.name}`, fnCall.args);
-                let functionResponseData = { status: 'error', message: 'Unknown function' };
+                const events = await Event.find(filter).limit(3);
+                functionResponseData = { status: 'success', results: events };
+            }
+            else if (fnCall.name === 'bookTickets') {
+                const { eventId, quantity } = fnCall.args;
+                try {
+                    const event = await Event.findById(eventId);
+                    if (!event) throw new Error('Event not found');
 
-                if (fnCall.name === 'searchEvents') {
-                    const { query, category, maxPrice } = fnCall.args;
-                    let filter = {};
-                    if (query) filter.$or = [
-                        { title: { $regex: query, $options: 'i' } },
-                        { location: { $regex: query, $options: 'i' } }
-                    ];
-                    if (category) filter.category = { $regex: new RegExp(`^${category}$`, 'i') };
-                    if (maxPrice) filter.price = { $lte: maxPrice };
+                    const updatedEvent = await Event.findOneAndUpdate(
+                        { _id: eventId, availableTickets: { $gte: quantity } },
+                        { $inc: { availableTickets: -quantity, soldTickets: quantity } },
+                        { new: true }
+                    );
+                    if (!updatedEvent) throw new Error('Tickets sold out');
 
-                    const events = await Event.find(filter).limit(3);
-                    functionResponseData = { status: 'success', results: events };
+                    const ticket = await Ticket.create({
+                        user: req.user.id,
+                        event: eventId,
+                        quantity,
+                        status: 'Confirmed'
+                    });
+                    await invalidateEventCache();
+
+                    // Send PDF email in background — non-blocking
+                    setImmediate(async () => {
+                        try {
+                            const pdf = await generateTicketPDF(ticket, updatedEvent, req.user);
+                            await sendTicketEmail(req.user, updatedEvent, pdf);
+                        } catch (e) {
+                            console.error('📧 [Email] Failed:', e.message);
+                        }
+                    });
+
+                    functionResponseData = {
+                        status: 'success',
+                        message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`
+                    };
+                } catch (err) {
+                    functionResponseData = { status: 'error', error: err.message };
                 }
-                else if (fnCall.name === 'bookTickets') {
-                    const { eventId, quantity } = fnCall.args;
-                    try {
-                        const event = await Event.findById(eventId);
-                        if (!event) throw new Error('Event not found');
-
-                        const updatedEvent = await Event.findOneAndUpdate(
-                            { _id: eventId, availableTickets: { $gte: quantity } },
-                            { $inc: { availableTickets: -quantity, soldTickets: quantity } },
-                            { new: true }
-                        );
-                        if (!updatedEvent) throw new Error('Tickets sold out');
-
-                        const ticket = await Ticket.create({
-                            user: req.user.id,
-                            event: eventId,
-                            quantity,
-                            status: 'Confirmed'
-                        });
-                        await invalidateEventCache();
-
-                        // Send PDF email in background — non-blocking
-                        setImmediate(async () => {
-                            try {
-                                const pdf = await generateTicketPDF(ticket, updatedEvent, req.user);
-                                await sendTicketEmail(req.user, updatedEvent, pdf);
-                            } catch (e) {
-                                console.error('📧 [Email] Failed:', e.message);
-                            }
-                        });
-
-                        functionResponseData = {
-                            status: 'success',
-                            message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`
-                        };
-                    } catch (err) {
-                        functionResponseData = { status: 'error', error: err.message };
-                    }
-                }
-
-                // Append model fn call + our result, then re-call model
-                contents.push(
-                    { role: 'model', parts: [{ functionCall: fnCall }] },
-                    { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
-                );
-
-                data = await callGemini(rawKey, modelName, contents);
-                turnCount++;
             }
 
-            const finalOutput = extractText(data) || "I'm sorry, I couldn't process that request right now.";
-            return res.status(200).json({ responseText: finalOutput });
+            contents.push(
+                { role: 'model', parts: [{ functionCall: fnCall }] },
+                { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
+            );
 
-        } catch (err) {
-            console.warn(`⚠️ [Gemini v1beta] ${modelName} failed:`, err.message);
-            lastError = err;
-            continue;
+            data = await callGemini(rawKey, contents);
+            turnCount++;
         }
-    }
 
-    res.status(500).json({
-        message: 'AI Assistant is currently unavailable. Please try again later.',
-        error: lastError?.message || 'All model fallbacks exhausted.',
-        debug: debugInfo
-    });
+        const finalOutput = extractText(data) || "I'm sorry, I couldn't process that request right now.";
+        return res.status(200).json({ responseText: finalOutput });
+
+    } catch (err) {
+        console.error(`❌ [Gemini] ${FREE_MODEL} failed:`, err.message);
+        res.status(500).json({
+            message: 'AI Assistant is currently unavailable. Please try again later.',
+            error: err.message
+        });
+    }
 });
 
 module.exports = { handleChat };
