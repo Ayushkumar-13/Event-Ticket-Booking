@@ -12,13 +12,17 @@ const ChatAssistant = () => {
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     useEffect(() => {
-        if (isOpen) scrollToBottom();
+        if (isOpen) {
+            scrollToBottom();
+            inputRef.current?.focus();
+        }
     }, [messages, isOpen]);
 
     // Don't render for logged out users since the backend requires protect middleware
@@ -128,12 +132,12 @@ const ChatAssistant = () => {
 
                     <form onSubmit={sendMessage} className="p-3 bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 flex gap-2">
                         <input 
+                            ref={inputRef}
                             type="text" 
                             className="flex-1 bg-gray-100 dark:bg-slate-800 border-none rounded-full px-4 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition"
                             placeholder="Find me music events..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            disabled={isTyping}
                         />
                         <button 
                             type="submit" 
