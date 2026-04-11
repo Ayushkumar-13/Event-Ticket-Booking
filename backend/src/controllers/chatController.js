@@ -11,13 +11,14 @@ const ApiError = require('../utils/ApiError');
 // We call Google's REST API directly using v1 with plain fetch.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ✅ Only confirmed working models on Gemini v1 (no -exp, no -latest, no gemini-pro)
+// ✅ Flagship models for April 2026 (Pro for reasoning, Flash for speed)
 const MODELS_TO_TRY = [
+    'gemini-3.1-pro',
+    'gemini-3.0-flash',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
     'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
-    'gemini-1.5-pro',
 ];
 
 const SYSTEM_INSTRUCTION = {
@@ -53,15 +54,15 @@ const TOOLS = [{
     ]
 }];
 
-// Direct REST call to Gemini v1 — bypasses SDK entirely
-async function callGeminiV1(apiKey, modelName, contents) {
-    const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
+// Direct REST call to Gemini v1beta — supports systemInstruction and tools reliably
+async function callGemini(apiKey, modelName, contents) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            system_instruction: SYSTEM_INSTRUCTION,
+            systemInstruction: SYSTEM_INSTRUCTION,
             tools: TOOLS,
             contents
         })
@@ -119,8 +120,8 @@ const handleChat = asyncHandler(async (req, res) => {
             debugInfo.attempts.push(modelName);
             console.log(`🤖 [Gemini v1] Trying: ${modelName}`);
 
-            let data = await callGeminiV1(rawKey, modelName, contents);
-            console.log(`✅ [Gemini v1] Success: ${modelName}`);
+            let data = await callGemini(rawKey, modelName, contents);
+            console.log(`✅ [Gemini v1beta] Success: ${modelName}`);
 
             // Handle tool/function calls — max 2 turns
             let turnCount = 0;
@@ -190,7 +191,7 @@ const handleChat = asyncHandler(async (req, res) => {
                     { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
                 );
 
-                data = await callGeminiV1(rawKey, modelName, contents);
+                data = await callGemini(rawKey, modelName, contents);
                 turnCount++;
             }
 
@@ -198,7 +199,7 @@ const handleChat = asyncHandler(async (req, res) => {
             return res.status(200).json({ responseText: finalOutput });
 
         } catch (err) {
-            console.warn(`⚠️ [Gemini v1] ${modelName} failed:`, err.message);
+            console.warn(`⚠️ [Gemini v1beta] ${modelName} failed:`, err.message);
             lastError = err;
             continue;
         }
