@@ -13,6 +13,8 @@ frontend/node_modules/
 # Sensitive Files
 CI_CD_SECRETS_GUIDE.md
 interview_answers.md
+*_GUIDE.md
+interview_*.md
 
 # Build Outputs
 dist/

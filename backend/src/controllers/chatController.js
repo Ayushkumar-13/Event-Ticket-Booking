@@ -13,11 +13,12 @@ const ApiError = require('../utils/ApiError');
 
 // ✅ Flagship models for April 2026 (Pro for reasoning, Flash for speed)
 const MODELS_TO_TRY = [
-    'gemini-2.5-pro',
+    'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite-preview',
     'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-];;
+    'gemini-2.0-flash-latest',
+    'gemini-1.5-flash-latest'
+];
 
 const SYSTEM_INSTRUCTION = {
     parts: [{ text: 'You are a helpful ticketing assistant. You help users search for events and book tickets.' }]
@@ -111,7 +112,7 @@ const handleChat = asyncHandler(async (req, res) => {
     ];
 
     let lastError = null;
-    const debugInfo = { attempts: [] };
+    const debugInfo = { attempts: [], toolResults: [] };
 
     for (const modelName of MODELS_TO_TRY) {
         try {
@@ -176,12 +177,15 @@ const handleChat = asyncHandler(async (req, res) => {
 
                         functionResponseData = {
                             status: 'success',
-                            message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`
+                            message: `Booked ${quantity} ticket(s)! Ticket ID: ${ticket._id}`,
+                            ticketId: ticket._id
                         };
                     } catch (err) {
                         functionResponseData = { status: 'error', error: err.message };
                     }
                 }
+
+                debugInfo.toolResults.push({ name: fnCall.name, response: functionResponseData });
 
                 // Append model fn call + our result, then re-call model
                 contents.push(
@@ -194,7 +198,10 @@ const handleChat = asyncHandler(async (req, res) => {
             }
 
             const finalOutput = extractText(data) || "I'm sorry, I couldn't process that request right now.";
-            return res.status(200).json({ responseText: finalOutput });
+            return res.status(200).json({ 
+                responseText: finalOutput,
+                debug: debugInfo
+            });
 
         } catch (err) {
             console.warn(`⚠️ [Gemini v1beta] ${modelName} failed:`, err.message);

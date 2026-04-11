@@ -193,9 +193,49 @@ const getOrganizerTickets = asyncHandler(async (req, res) => {
     res.status(200).json(tickets);
 });
 
+// @desc    Download ticket PDF
+// @route   GET /api/tickets/:id/download
+// @access  Private
+const downloadTicketPDF = asyncHandler(async (req, res) => {
+    const ticket = await Ticket.findById(req.params.id).populate('event');
+    
+    if (!ticket) {
+        res.status(404);
+        throw new Error('Ticket not found');
+    }
+
+    // Ensure the ticket belongs to the user
+    if (ticket.user.toString() !== req.user.id && req.user.role !== 'organizer') {
+        res.status(403);
+        throw new Error('Not authorized to download this ticket');
+    }
+
+    const event = ticket.event;
+    if (!event) {
+        res.status(404);
+        throw new Error('Associated event not found');
+    }
+
+    const userForPdf = {
+        name: req.user.name,
+        email: req.user.email
+    };
+
+    const pdfBuffer = await generateTicketPDF(ticket, event, userForPdf);
+
+    res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename=ticket-${ticket._id}.pdf`,
+        'Content-Length': pdfBuffer.length
+    });
+
+    res.send(pdfBuffer);
+});
+
 module.exports = {
     bookTicket,
     getUserTickets,
     getBookedEventIds,
-    getOrganizerTickets
+    getOrganizerTickets,
+    downloadTicketPDF
 };
