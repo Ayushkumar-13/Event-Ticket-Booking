@@ -11,17 +11,25 @@ const ApiError = require('../utils/ApiError');
 // We call Google's REST API directly using v1 with plain fetch.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ✅ Flagship models for April 2026 (Pro for reasoning, Flash for speed)
+// ✅ Verified models from ListModels API (April 2026)
 const MODELS_TO_TRY = [
     'gemini-3.1-pro-preview',
     'gemini-3.1-flash-lite-preview',
+    'gemini-2.5-pro',
     'gemini-2.5-flash',
-    'gemini-2.0-flash-latest',
-    'gemini-1.5-flash-latest'
+    'gemini-2.0-flash',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash'
 ];
 
 const SYSTEM_INSTRUCTION = {
-    parts: [{ text: 'You are a helpful ticketing assistant. You help users search for events and book tickets.' }]
+    parts: [{ text: `You are the EventTix AI Booking Assistant. 
+Your goal is to help users find and book tickets for exciting events.
+- Be friendly, professional, and diverse in your greetings.
+- Acknowledge previous context in the conversation to avoid looking repetitive.
+- When searching, use the searchEvents tool.
+- When a user wants to book, use the bookTickets tool.
+- Always confirm the details (Event ID, quantity) before final booking.` }]
 };
 
 const TOOLS = [{
