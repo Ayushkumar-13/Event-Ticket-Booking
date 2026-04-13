@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle } from 'lucide-react';
 import Button from '../common/Button';
-import { bookTicket } from '../../services/registrationService';
+import { createRazorpayOrder, verifyRazorpayPayment } from '../../services/paymentService';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -36,12 +36,53 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
         }
 
         try {
-            // Tickets are now created synchronously — immediate success response
-            await bookTicket(targetEventId, quantity, idempotencyKey);
-            setStatus('success');
-            if (onSuccess) onSuccess();
+            // Step 1: Create Razorpay Order
+            const orderData = await createRazorpayOrder(targetEventId, quantity);
+
+            // Step 2: Initialize Razorpay Checkout
+            const options = {
+                key: import.meta.env.VITE_RAZORPAY_KEY_ID || '', // This will be needed in .env
+                amount: orderData.amount,
+                currency: orderData.currency,
+                name: "EventTix",
+                description: `Tickets for ${orderData.event.title}`,
+                order_id: orderData.order_id,
+                handler: async function (response) {
+                    try {
+                        setStatus('processing');
+                        // Step 3: Verify Payment on Backend
+                        await verifyRazorpayPayment({
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_signature: response.razorpay_signature,
+                            eventId: targetEventId,
+                            quantity
+                        });
+                        setStatus('success');
+                        if (onSuccess) onSuccess();
+                    } catch (verifyErr) {
+                        setError(verifyErr.message || 'Payment verification failed.');
+                        setStatus('error');
+                    }
+                },
+                prefill: {
+                    name: user.name,
+                    email: user.email,
+                },
+                theme: {
+                    color: "#4f46e5"
+                },
+                modal: {
+                    ondismiss: function () {
+                        setStatus('idle');
+                    }
+                }
+            };
+
+            const rzp = new window.Razorpay(options);
+            rzp.open();
         } catch (err) {
-            setError(err.message || 'Booking failed. Please try again.');
+            setError(err.message || 'Checkout failed. Please try again.');
             setStatus('error');
         }
     };
