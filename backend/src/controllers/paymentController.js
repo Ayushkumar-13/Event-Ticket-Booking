@@ -8,12 +8,17 @@ const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
 const { convertToINR } = require('../utils/currencyService');
 
-// Initialize Razorpay
-// Note: These will be undefined until the user adds them to .env
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
-});
+// Note: We initialize inside the handler or use a getter to ensure 
+// environment variables are loaded accurately.
+const getRazorpayInstance = () => {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+        throw new Error('Razorpay API keys are missing from environment variables');
+    }
+    return new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+};
 
 // @desc    Create Razorpay Order
 // @route   POST /api/payments/order
@@ -52,7 +57,13 @@ const createOrder = asyncHandler(async (req, res) => {
     };
 
     try {
+        const razorpay = getRazorpayInstance();
+        
+        console.log(`📦 [Razorpay] Creating order for amount: ${amount} ${currency}`);
+        
         const order = await razorpay.orders.create(options);
+        
+        console.log(`✅ [Razorpay] Order created: ${order.id}`);
         res.status(201).json({
             success: true,
             order_id: order.id,
@@ -88,6 +99,12 @@ const verifyPayment = asyncHandler(async (req, res) => {
 
     // 1. Verify Signature
     const body = razorpay_order_id + "|" + razorpay_payment_id;
+    
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+        res.status(500);
+        throw new Error('Razorpay Secret Key is missing');
+    }
+
     const expectedSignature = crypto
         .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
         .update(body.toString())
