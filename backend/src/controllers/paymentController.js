@@ -6,6 +6,7 @@ const Ticket = require('../models/Ticket');
 const { generateTicketPDF } = require('../utils/pdfGenerator');
 const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
+const { convertToINR } = require('../utils/currencyService');
 
 // Initialize Razorpay
 // Note: These will be undefined until the user adds them to .env
@@ -36,7 +37,12 @@ const createOrder = asyncHandler(async (req, res) => {
         throw new Error('Not enough tickets available');
     }
 
-    const amount = event.price * quantity * 100; // Amount in paise
+    // --- PRODUCTION-GRADE CURRENCY CONVERSION ---
+    // We list in the original currency but convert to INR for the transaction
+    // to ensure compatibility with your current account status.
+    const { amountINR, rate } = await convertToINR(event.price * quantity, event.currency);
+    
+    const amount = amountINR * 100; // Amount in paise
     const currency = 'INR';
 
     const options = {
@@ -94,7 +100,17 @@ const verifyPayment = asyncHandler(async (req, res) => {
         throw new Error('Invalid payment signature. Payment might be tampered with.');
     }
 
-    // 2. Atomic Inventory Check & Update
+    // 2. Fetch event to get original price details
+    const event = await Event.findById(eventId);
+    if (!event) {
+        res.status(404);
+        throw new Error('Event not found');
+    }
+
+    // 3. Re-calculate the actual INR amount paid and original amount for auditing
+    const { amountINR, rate } = await convertToINR(event.price * quantity, event.currency);
+
+    // 4. Atomic Inventory Check & Update
     const updatedEvent = await Event.findOneAndUpdate(
         {
             _id: eventId,
@@ -110,13 +126,11 @@ const verifyPayment = asyncHandler(async (req, res) => {
     );
 
     if (!updatedEvent) {
-        // This is a rare edge case where tickets sold out between order creation and payment
-        // In a real production app, we would initiate a Razorpay Refund here.
         res.status(409);
-        throw new Error('Tickets sold out before payment could be finalized. Contact support for refund.');
+        throw new Error('Tickets sold out before payment could be finalized.');
     }
 
-    // 3. Create Ticket
+    // 5. Create Ticket with Full Audit Trail
     const ticket = await Ticket.create({
         user: req.user.id,
         event: eventId,
@@ -125,7 +139,10 @@ const verifyPayment = asyncHandler(async (req, res) => {
         orderId: razorpay_order_id,
         paymentId: razorpay_payment_id,
         signature: razorpay_signature,
-        amount: (updatedEvent.price * quantity)
+        amount: amountINR,
+        originalAmount: event.price * quantity,
+        originalCurrency: event.currency,
+        exchangeRate: rate
     });
 
     console.log(`✅ [Payment] Verified & Ticket ${ticket._id} created for user ${req.user.id}`);

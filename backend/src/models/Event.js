@@ -26,6 +26,12 @@ const eventSchema = mongoose.Schema({
         required: [true, 'Please add a price'],
         default: 0
     },
+    currency: {
+        type: String,
+        required: [true, 'Please add a currency'],
+        default: 'INR',
+        enum: ['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD']
+    },
     category: {
         type: String,
         required: false

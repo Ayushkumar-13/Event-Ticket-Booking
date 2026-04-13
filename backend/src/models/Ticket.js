@@ -41,6 +41,15 @@ const ticketSchema = mongoose.Schema({
     },
     amount: {
         type: Number
+    },
+    originalAmount: {
+        type: Number
+    },
+    originalCurrency: {
+        type: String
+    },
+    exchangeRate: {
+        type: Number
     }
 }, {
     timestamps: true
