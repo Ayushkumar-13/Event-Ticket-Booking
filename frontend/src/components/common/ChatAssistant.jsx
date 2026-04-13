@@ -29,11 +29,20 @@ const ChatAssistant = () => {
         // Important: capture the pointer so mouse events follow outside the iframe/element
         e.currentTarget.setPointerCapture(e.pointerId);
 
+        // MERGE AUTO-SHIFT INTO POSITION: 
+        // This stops the "jumping" behavior by making the temporary shift permanent 
+        // the moment the user takes manual control.
+        const currentPosX = position.x + autoShift.x;
+        const currentPosY = position.y + autoShift.y;
+        
+        setPosition({ x: currentPosX, y: currentPosY });
+        setAutoShift({ x: 0, y: 0 });
+
         dragInfo.current = {
             startX: e.clientX,
             startY: e.clientY,
-            startPosX: position.x,
-            startPosY: position.y,
+            startPosX: currentPosX,
+            startPosY: currentPosY,
             isMoved: false
         };
         setIsDragging(true);
@@ -50,46 +59,17 @@ const ChatAssistant = () => {
                 dragInfo.current.isMoved = true;
             }
 
-            let newX = dragInfo.current.startPosX + dx;
-            let newY = dragInfo.current.startPosY + dy;
+            const newX = dragInfo.current.startPosX + dx;
+            const newY = dragInfo.current.startPosY + dy;
 
             // PRODUCTION-LEVEL VIEWPORT CLAMPING
+            // The logic: Keep the container within (pad) distance of viewport edges.
             const rect = containerRef.current.getBoundingClientRect();
-            const pad = 12; // Standard viewport padding
-
-            // Calculate current absolute position relative to viewport
-            // Initial anchor is bottom-right (bottom: 24, right: 24)
-            const currentTop = rect.top;
-            const currentBottom = rect.bottom;
-            const currentLeft = rect.left;
-            const currentRight = rect.right;
-
-            // X-axis clamping (Right/Left)
-            // rect.right is anchored at window.innerWidth - 24
-            const maxAllowX = (window.innerWidth - rect.right) + (rect.width - pad); 
-            const minAllowX = -(rect.left - pad);
-            
-            // Y-axis clamping (Top/Bottom)
-            const maxAllowY = (window.innerHeight - rect.bottom) - pad; // Prevent going off bottom
-            const minAllowY = -(rect.top - pad); // Prevent going off top
-
-            setPosition({
-                x: Math.max(minAllowX + newX - newX, Math.min(maxAllowX + newX - newX, newX)), // Simpler relative clamp:
-                y: newY 
-            });
-
-            // Improved Clamping Logic:
-            // newX/newY are offsets from the original fixed position (bottom-6 right-6)
-            // The actual screen position is window width/height minus 24 minus offset
+            const pad = 12;
             const initialBottomOffset = 24;
             const initialRightOffset = 24;
 
-            const clampedX = Math.min(
-                initialRightOffset - pad, // Too far right
-                Math.max(window.innerWidth - rect.width - initialRightOffset - pad, newX) // Too far left? Wait.
-            );
-
-            // Let's use clean absolute calculations:
+            // Boundary calculations relative to the the fixed anchor (bottom-6 right-6)
             const maxX = initialRightOffset - pad; 
             const minX = -(window.innerWidth - rect.width - initialRightOffset - pad);
             const maxY = initialBottomOffset - pad;
