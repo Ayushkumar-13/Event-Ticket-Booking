@@ -42,7 +42,7 @@ const createOrder = asyncHandler(async (req, res) => {
     const options = {
         amount,
         currency,
-        receipt: `receipt_event_${eventId}_${Date.now()}`,
+        receipt: `rcpt_${eventId.toString().slice(-6)}_${Date.now()}`, 
     };
 
     try {
@@ -59,8 +59,12 @@ const createOrder = asyncHandler(async (req, res) => {
         });
     } catch (error) {
         console.error("Razorpay Order Error:", error);
-        res.status(500);
-        throw new Error('Could not create Razorpay order');
+        // Ensure we send a proper JSON response instead of just throwing to avoid SDK normalization errors
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.description || 'Could not create Razorpay order',
+            error: error.error || error.message
+        });
     }
 });
 
