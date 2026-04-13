@@ -1,4 +1,7 @@
 // src/server.js
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first'); // Force IPv4 first to resolve network connectivity/ENOTFOUND issues
+
 const http = require('http');
 const app = require('./app');
 const { initSocket } = require('./socket');
