@@ -127,7 +127,9 @@ const handleChat = asyncHandler(async (req, res) => {
             debugInfo.attempts.push(modelName);
             console.log(`🤖 [Gemini v1] Trying: ${modelName}`);
 
-            let data = await callGemini(rawKey, modelName, contents);
+            // Deep clone contents so failures don't corrupt the history for the next model
+            const currentContents = JSON.parse(JSON.stringify(contents));
+            let data = await callGemini(rawKey, modelName, currentContents);
             console.log(`✅ [Gemini v1beta] Success: ${modelName}`);
 
             // Handle tool/function calls — max 2 turns
@@ -195,13 +197,13 @@ const handleChat = asyncHandler(async (req, res) => {
 
                 debugInfo.toolResults.push({ name: fnCall.name, response: functionResponseData });
 
-                // Append model fn call + our result, then re-call model
-                contents.push(
-                    { role: 'model', parts: [{ functionCall: fnCall }] },
+                // Append model fn call exactly as received (preserves thought_signature) + our result
+                currentContents.push(
+                    data.candidates[0].content,
                     { role: 'user', parts: [{ functionResponse: { name: fnCall.name, response: functionResponseData } }] }
                 );
 
-                data = await callGemini(rawKey, modelName, contents);
+                data = await callGemini(rawKey, modelName, currentContents);
                 turnCount++;
             }
 
