@@ -13,6 +13,118 @@ const ChatAssistant = () => {
     const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const containerRef = useRef(null);
+
+    // Draggable state
+    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [autoShift, setAutoShift] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const dragInfo = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0, isMoved: false });
+
+    // Drag event handlers
+    const handlePointerDown = (e) => {
+        // Only allow left mouse button or touch
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        
+        // Important: capture the pointer so mouse events follow outside the iframe/element
+        e.currentTarget.setPointerCapture(e.pointerId);
+
+        dragInfo.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            startPosX: position.x,
+            startPosY: position.y,
+            isMoved: false
+        };
+        setIsDragging(true);
+    };
+
+    useEffect(() => {
+        const handlePointerMove = (e) => {
+            if (!isDragging || !containerRef.current) return;
+            
+            const dx = e.clientX - dragInfo.current.startX;
+            const dy = e.clientY - dragInfo.current.startY;
+            
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                dragInfo.current.isMoved = true;
+            }
+
+            let newX = dragInfo.current.startPosX + dx;
+            let newY = dragInfo.current.startPosY + dy;
+
+            // PRODUCTION-LEVEL VIEWPORT CLAMPING
+            const rect = containerRef.current.getBoundingClientRect();
+            const pad = 12; // Standard viewport padding
+
+            // Calculate current absolute position relative to viewport
+            // Initial anchor is bottom-right (bottom: 24, right: 24)
+            const currentTop = rect.top;
+            const currentBottom = rect.bottom;
+            const currentLeft = rect.left;
+            const currentRight = rect.right;
+
+            // X-axis clamping (Right/Left)
+            // rect.right is anchored at window.innerWidth - 24
+            const maxAllowX = (window.innerWidth - rect.right) + (rect.width - pad); 
+            const minAllowX = -(rect.left - pad);
+            
+            // Y-axis clamping (Top/Bottom)
+            const maxAllowY = (window.innerHeight - rect.bottom) - pad; // Prevent going off bottom
+            const minAllowY = -(rect.top - pad); // Prevent going off top
+
+            setPosition({
+                x: Math.max(minAllowX + newX - newX, Math.min(maxAllowX + newX - newX, newX)), // Simpler relative clamp:
+                y: newY 
+            });
+
+            // Improved Clamping Logic:
+            // newX/newY are offsets from the original fixed position (bottom-6 right-6)
+            // The actual screen position is window width/height minus 24 minus offset
+            const initialBottomOffset = 24;
+            const initialRightOffset = 24;
+
+            const clampedX = Math.min(
+                initialRightOffset - pad, // Too far right
+                Math.max(window.innerWidth - rect.width - initialRightOffset - pad, newX) // Too far left? Wait.
+            );
+
+            // Let's use clean absolute calculations:
+            const maxX = initialRightOffset - pad; 
+            const minX = -(window.innerWidth - rect.width - initialRightOffset - pad);
+            const maxY = initialBottomOffset - pad;
+            const minY = -(window.innerHeight - rect.height - initialBottomOffset - pad);
+
+            setPosition({
+                x: Math.max(minX, Math.min(maxX, newX)),
+                y: Math.max(minY, Math.min(maxY, newY))
+            });
+        };
+
+        const handlePointerUp = () => {
+            if (isDragging) {
+                setIsDragging(false);
+            }
+        };
+
+        if (isDragging) {
+            window.addEventListener('pointermove', handlePointerMove);
+            window.addEventListener('pointerup', handlePointerUp);
+        }
+
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+        };
+    }, [isDragging]);
+
+    const toggleOpen = () => {
+        if (dragInfo.current.isMoved) {
+            dragInfo.current.isMoved = false; // Reset
+            return;
+        }
+        setIsOpen(true);
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -22,6 +134,30 @@ const ChatAssistant = () => {
         if (isOpen) {
             scrollToBottom();
             inputRef.current?.focus();
+
+            // Guard against opening window off-screen (Top and Left check)
+            setTimeout(() => {
+                if (containerRef.current) {
+                    const rect = containerRef.current.getBoundingClientRect();
+                    const pad = 12;
+                    let shiftX = 0;
+                    let shiftY = 0;
+
+                    if (rect.top < pad) {
+                        shiftY = pad - rect.top;
+                    }
+                    if (rect.left < pad) {
+                        shiftX = pad - rect.left;
+                    }
+
+                    if (shiftX !== 0 || shiftY !== 0) {
+                        setAutoShift({ x: shiftX, y: shiftY });
+                    }
+                }
+            }, 50);
+        } else {
+            // Reset shifting when closing so the icon returns to user's dragged position
+            setAutoShift({ x: 0, y: 0 });
         }
     }, [messages, isOpen]);
 
@@ -72,12 +208,23 @@ const ChatAssistant = () => {
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-50">
+        <div 
+            ref={containerRef}
+            className={`fixed bottom-6 right-6 z-50 flex flex-col items-end ${isDragging ? 'select-none' : ''}`}
+            style={{ 
+                transform: `translate3d(${position.x + autoShift.x}px, ${position.y + autoShift.y}px, 0)`,
+                transition: isDragging ? 'none' : 'transform 0.1s cubic-bezier(0.2, 0, 0, 1)'
+            }}
+        >
             {/* Chat button */}
             {!isOpen && (
                 <button 
-                    onClick={() => setIsOpen(true)}
-                    className="bg-indigo-600 text-white rounded-full p-4 shadow-xl hover:bg-indigo-700 transition transform hover:scale-105 flex items-center justify-center animate-bounce"
+                    onPointerDown={handlePointerDown}
+                    onClick={toggleOpen}
+                    className={`bg-indigo-600 text-white rounded-full p-4 shadow-xl transition transform flex items-center justify-center
+                        ${isDragging ? 'cursor-grabbing scale-105' : 'hover:scale-105 hover:bg-indigo-700 animate-bounce cursor-grab'}
+                    `}
+                    style={{ touchAction: 'none' }}
                 >
                     <MessageCircle size={28} />
                 </button>
@@ -86,11 +233,19 @@ const ChatAssistant = () => {
             {/* Chat Window */}
             {isOpen && (
                 <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-80 md:w-96 flex flex-col overflow-hidden border border-gray-200 dark:border-slate-800" style={{ height: '500px', maxHeight: '80vh' }}>
-                    <div className="bg-indigo-600 text-white p-4 flex justify-between items-center shadow-md z-10 transition-colors">
-                        <div className="font-semibold flex items-center gap-2">
+                    <div 
+                        onPointerDown={handlePointerDown}
+                        className={`bg-indigo-600 text-white p-4 flex justify-between items-center shadow-md z-10 transition-colors ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                        style={{ touchAction: 'none' }}
+                    >
+                        <div className="font-semibold flex items-center gap-2 pointer-events-none">
                            <span className="animate-pulse">✨</span> Booking Assistant
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="text-indigo-100 hover:text-white transition rounded-full p-1 hover:bg-white/10">
+                        <button 
+                            onPointerDown={(e) => e.stopPropagation()} 
+                            onClick={() => setIsOpen(false)} 
+                            className="text-indigo-100 hover:text-white transition rounded-full p-1 hover:bg-white/10"
+                        >
                             <X size={20} />
                         </button>
                     </div>
