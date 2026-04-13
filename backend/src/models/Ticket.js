@@ -28,7 +28,19 @@ const ticketSchema = mongoose.Schema({
     idempotencyKey: {
         type: String,
         unique: true,
-        sparse: true // Allows nulls/undefined for older records without conflicting
+        sparse: true
+    },
+    paymentId: {
+        type: String
+    },
+    orderId: {
+        type: String
+    },
+    signature: {
+        type: String
+    },
+    amount: {
+        type: Number
     }
 }, {
     timestamps: true

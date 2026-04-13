@@ -5,7 +5,7 @@ const connectDB = async () => {
         mongoose.set('strictQuery', true);
         const conn = await mongoose.connect(process.env.MONGO_URI, {
             family: 4, // Force IPv4 to fix DNS resolution issues on Windows
-            serverSelectionTimeoutMS: 15000,
+            serverSelectionTimeoutMS: 30000,
         });
 
         console.log(`---------------MongoDB Connected----------------`);
