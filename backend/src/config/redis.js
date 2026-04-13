@@ -27,7 +27,8 @@ redisClient.on('error', (err) => {
         !err.message.includes('ENOTFOUND') && 
         !err.message.includes('ECONNRESET') &&
         !err.message.includes('ETIMEDOUT') &&
-        !err.message.includes('ECONNREFUSED')
+        !err.message.includes('ECONNREFUSED') &&
+        !err.message.includes('Connection timeout')
     ) {
         console.error('Redis Client:', err.message);
     }
