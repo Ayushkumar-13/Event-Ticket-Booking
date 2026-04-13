@@ -3,7 +3,7 @@ import api from './api';
 // Mock data (Fallback if backend is not running)
 const MOCK_EVENTS = [
     {
-        _id: '1',
+        _id: '507f1f77bcf86cd799439011',
         title: 'Tech Conference 2025',
         description: 'Join us for the biggest tech conference of the year! Featuring speakers from Google, Microsoft, and more.',
         date: '2025-06-15',
@@ -15,7 +15,7 @@ const MOCK_EVENTS = [
         availableTickets: 500,
     },
     {
-        _id: '2',
+        _id: '507f1f77bcf86cd799439012',
         title: 'Summer Music Festival',
         description: 'A weekend of live music, food, and fun. Headliners include The Weeknd and Dua Lipa.',
         date: '2025-07-20',
@@ -27,7 +27,7 @@ const MOCK_EVENTS = [
         availableTickets: 2000,
     },
     {
-        _id: '3',
+        _id: '507f1f77bcf86cd799439013',
         title: 'Digital Art Workshop',
         description: 'Learn the fundamentals of digital art from industry professionals. Equipment provided.',
         date: '2025-05-10',
