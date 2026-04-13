@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Tag, CheckCircle } from 'lucide-react';
+import { formatCurrency } from '../utils/currencyFormatter';
 
 const EventCard = ({ event, isBooked = false, index = 0 }) => {
     // Calculate a staggered delay based on the card's index in the grid (0, 100, 200...)
@@ -58,7 +59,7 @@ const EventCard = ({ event, isBooked = false, index = 0 }) => {
                     <div className="text-right">
                         <div className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">Price</div>
                         <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                            ${event.price}
+                            {formatCurrency(event.price, event.currency)}
                         </div>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ import Button from '../common/Button';
 import { createRazorpayOrder, verifyRazorpayPayment } from '../../services/paymentService';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { formatCurrency } from '../../utils/currencyFormatter';
 
 const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
     const { user } = useAuth();
@@ -122,10 +123,18 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                 </select>
             </div>
 
-            <div className="flex justify-between items-center mb-6 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div className="flex justify-between items-center mb-1 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-4">
                 <span>Subtotal</span>
-                <span className="font-bold text-lg text-gray-900 dark:text-gray-100">${event.price * quantity}</span>
+                <span className="font-bold text-lg text-gray-900 dark:text-gray-100">
+                    {formatCurrency(event.price * quantity, event.currency)}
+                </span>
             </div>
+
+            {event.currency !== 'INR' && (
+                <p className="text-[10px] text-gray-500 text-right mb-6">
+                    * Final payment will be approximately {formatCurrency(event.price * quantity * 83, 'INR')} based on live rates.
+                </p>
+            )}
 
             {error && (
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 p-3 rounded-lg mb-4 text-sm">

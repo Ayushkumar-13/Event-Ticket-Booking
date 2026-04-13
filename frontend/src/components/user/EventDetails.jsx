@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, MapPin } from 'lucide-react';
 import Badge from '../common/Badge';
+import { formatCurrency } from '../../utils/currencyFormatter';
 
 const EventDetails = ({ event }) => {
     if (!event) return null;
@@ -14,7 +15,7 @@ const EventDetails = ({ event }) => {
                     className="w-full h-full object-cover"
                 />
                 <div className="absolute top-4 right-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur rounded-full px-4 py-2 text-indigo-700 dark:text-indigo-400 font-bold shadow-sm">
-                    ${event.price} / ticket
+                    {formatCurrency(event.price, event.currency)} / ticket
                 </div>
             </div>
 
