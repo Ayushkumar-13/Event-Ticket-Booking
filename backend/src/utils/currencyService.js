@@ -54,7 +54,12 @@ const getLatestRates = async () => {
  * Convert an amount from USD/EUR etc. to INR
  */
 const convertToINR = async (amount, fromCurrency) => {
-    if (fromCurrency === 'INR') return amount;
+    if (fromCurrency === 'INR') {
+        return {
+            amountINR: Math.round(amount),
+            rate: 1
+        };
+    }
 
     const rates = await getLatestRates();
     const rateToINR = 1 / (rates[fromCurrency] || 1);
