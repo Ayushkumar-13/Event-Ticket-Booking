@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import EventDetailsComponent from '../components/user/EventDetails';
 import RegistrationForm from '../components/user/RegistrationForm';
+import { useSocket } from '../context/SocketContext';
 
 const EventDetails = () => {
     const { id } = useParams();
@@ -47,40 +48,28 @@ const EventDetails = () => {
         checkBookingStatus();
     }, [user, id]);
 
-    // --- FEATURE 9: REAL-TIME DATA (WEBSOCKETS) ---
-    // Listen for live ticket updates from the background worker
+    // --- REAL-TIME DATA (WEBSOCKETS) ---
+    const socket = useSocket();
+
     useEffect(() => {
-        // Dynamically grab the backend base URL (removing the /api suffix)
-        const API_URL = import.meta.env.VITE_API_URL || '/api';
-        const SOCKET_URL = API_URL.replace(/\/api$/, '') || window.location.origin;
+        if (!socket || !id) return;
 
-        // Note: Using dynamic import to avoid crashes if socket.io-client isn't fully installed yet
-        let socket;
-        
-        // Vercel serverless functions do not support persistent WebSockets out-of-the-box.
-        // We disable it here to prevent continuous CORS polling errors in the console.
-        if (SOCKET_URL.includes('vercel.app')) {
-            console.warn("WebSocket disabled: Vercel production detected.");
-            return;
-        }
+        console.log('🎫 [EventDetails] Attaching real-time listener...');
 
-        import('socket.io-client').then(({ io }) => {
-            socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
-
-            socket.on('ticket_updated', (data) => {
-                // Only update the screen if the broadcasted ticket purchase was for THIS specific event
-                if (data.eventId === id) {
-                    console.log(`🎫 [WebSocket] Live Update! Tickets remaining: ${data.availableTickets}`);
-                    setEvent(prev => prev ? { ...prev, availableTickets: data.availableTickets } : prev);
-                }
-            });
-        }).catch(err => console.error("Socket.io not found", err));
-
-        // Cleanup the websocket connection when the user leaves the page
-        return () => {
-            if (socket) socket.disconnect();
+        const handleTicketUpdate = (data) => {
+            if (data.eventId === id) {
+                console.log(`📡 [RealTime] Live ticket update for event ${id}: ${data.availableTickets}`);
+                setEvent(prev => prev ? { ...prev, availableTickets: data.availableTickets } : prev);
+            }
         };
-    }, [id]);
+
+        socket.on('ticket_updated', handleTicketUpdate);
+
+        return () => {
+            console.log('🎫 [EventDetails] Detaching real-time listener...');
+            socket.off('ticket_updated', handleTicketUpdate);
+        };
+    }, [socket, id]);
 
     if (loading) {
         return (

@@ -25,6 +25,19 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
             return navigate('/login', { state: { from: { pathname: `/event/${event._id}` } } });
         }
 
+        // ── Production Check: Ensure Razorpay script is loaded ──────────────
+        // This fails when: browser ad-blocker is active, no internet, or the
+        // CDN script in index.html hasn't loaded yet.
+        if (typeof window.Razorpay === 'undefined') {
+            setError(
+                'Payment system could not load. ' +
+                'If you have an ad-blocker (e.g. uBlock Origin), please disable it for this page and refresh. ' +
+                'Or try a different browser like Chrome.'
+            );
+            setStatus('error');
+            return;
+        }
+
         setStatus('processing');
         setError('');
 
@@ -36,13 +49,22 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
             return;
         }
 
+        if (!targetEventId) {
+            setError('System Error: Event ID is missing. Cannot proceed.');
+            setStatus('error');
+            return;
+        }
+
         try {
             // Step 1: Create Razorpay Order
             const orderData = await createRazorpayOrder(targetEventId, quantity);
 
+            // Determine if we are in Dark Mode
+            const isDarkMode = document.documentElement.classList.contains('dark');
+
             // Step 2: Initialize Razorpay Checkout
             const options = {
-                key: import.meta.env.VITE_RAZORPAY_KEY_ID || '', // This will be needed in .env
+                key: import.meta.env.VITE_RAZORPAY_KEY_ID || '',
                 amount: orderData.amount,
                 currency: orderData.currency,
                 name: "EventTix",
@@ -79,7 +101,7 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                     }
                 }
             };
-
+            
             const rzp = new window.Razorpay(options);
             rzp.open();
         } catch (err) {
@@ -87,6 +109,7 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
             setStatus('error');
         }
     };
+
 
     if (status === 'success') {
         return (

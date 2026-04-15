@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getEvents, createEvent, updateEvent, deleteEvent, getOrganizerEvents } from '../services/eventService';
+import { useSocket } from './SocketContext';
 
 const EventContext = createContext();
 
@@ -84,40 +85,34 @@ export const EventProvider = ({ children }) => {
     }, [fetchEvents]);
 
     // --- REAL TIME UPDATES ---
+    const socket = useSocket();
+
     useEffect(() => {
-        const API_URL = import.meta.env.VITE_API_URL || '/api';
-        const SOCKET_URL = API_URL.replace(/\/api$/, '') || window.location.origin;
+        if (!socket) return;
 
-        let socket;
+        console.log('🎫 [EventContext] Attaching real-time listener...');
         
-        // Vercel serverless functions do not support WebSockets natively.
-        // Prevent CORS 500/404 spam in the browser console.
-        if (SOCKET_URL.includes('vercel.app')) {
-            console.warn("WebSocket disabled for Vercel production to prevent CORS errors.");
-            return;
-        }
+        const handleTicketUpdate = (data) => {
+            const { eventId, availableTickets } = data;
+            console.log(`📡 [RealTime] Event ${eventId} updated: ${availableTickets} tickets left`);
+            
+            // Instantly update the event globally across the entire website
+            setEvents(prev => prev.map(e => 
+                e._id === eventId ? { ...e, availableTickets } : e
+            ));
+            
+            setOrganizerEvents(prev => prev.map(e => 
+                e._id === eventId ? { ...e, availableTickets } : e
+            ));
+        };
 
-        import('socket.io-client').then(({ io }) => {
-            socket = io(SOCKET_URL, { transports: ['websocket'] });
-
-            socket.on('ticket_updated', (data) => {
-                const { eventId, availableTickets } = data;
-                
-                // Instantly update the event globally across the entire website
-                setEvents(prev => prev.map(e => 
-                    e._id === eventId ? { ...e, availableTickets } : e
-                ));
-                
-                setOrganizerEvents(prev => prev.map(e => 
-                    e._id === eventId ? { ...e, availableTickets } : e
-                ));
-            });
-        }).catch(err => console.error("Socket.io not found", err));
+        socket.on('ticket_updated', handleTicketUpdate);
 
         return () => {
-            if (socket) socket.disconnect();
+            console.log('🎫 [EventContext] Detaching real-time listener...');
+            socket.off('ticket_updated', handleTicketUpdate);
         };
-    }, []);
+    }, [socket]);
 
     return (
         <EventContext.Provider value={{

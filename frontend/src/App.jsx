@@ -2,7 +2,9 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { EventProvider } from './context/EventContext';
+import { ThemeContext } from './context/ThemeContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { SocketProvider } from './context/SocketContext';
 
 // Layouts
 import UserLayout from './layouts/UserLayout';
@@ -58,47 +60,49 @@ function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
-          <EventProvider>
-            <Routes>
-              {/* Public Routes with User Layout (Navbar + Footer) */}
-              <Route element={<UserLayout />}>
-                <Route path="/" element={<LandingRedirect><PublicEventPage /></LandingRedirect>} />
-                <Route path="/event/:id" element={<EventDetails />} />
-                <Route path="/booking-success" element={<RegistrationSuccess />} />
-              </Route>
-
-              {/* Protected User Routes */}
-              <Route element={<ProtectedRoute />}>
+          <SocketProvider>
+            <EventProvider>
+              <Routes>
+                {/* Public Routes with User Layout (Navbar + Footer) */}
                 <Route element={<UserLayout />}>
-                  <Route path="/dashboard" element={<ViewTicket />} />
+                  <Route path="/" element={<LandingRedirect><PublicEventPage /></LandingRedirect>} />
+                  <Route path="/event/:id" element={<EventDetails />} />
+                  <Route path="/booking-success" element={<RegistrationSuccess />} />
                 </Route>
-              </Route>
-
-              {/* Auth Routes with specific Layout */}
-              <Route element={<AuthLayout />}>
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-              </Route>
-
-              {/* Organizer Routes with Dashboard Layout */}
-              <Route path="/organizer" element={
-                <ProtectedRoute>
-                  <OrganizerLayout />
-                </ProtectedRoute>
-              }>
-                <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<OrganizerDashboard />} />
-                <Route path="events" element={<EventManagement />} />
-                <Route path="events/new" element={<CreateEvent />} />
-                <Route path="events/edit/:id" element={<EditEvent />} />
-                {/* <Route path="registrations" element={<RegistrationList />} /> */}
-                <Route path="registrations" element={<ExportReports />} /> {/* Updated route to match Dashboard link */}
-                <Route path="settings" element={<OrganizerSettings />} />
-              </Route>
-
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </EventProvider>
+  
+                {/* Protected User Routes */}
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<UserLayout />}>
+                    <Route path="/dashboard" element={<ViewTicket />} />
+                  </Route>
+                </Route>
+  
+                {/* Auth Routes with specific Layout */}
+                <Route element={<AuthLayout />}>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                </Route>
+  
+                {/* Organizer Routes with Dashboard Layout */}
+                <Route path="/organizer" element={
+                  <ProtectedRoute>
+                    <OrganizerLayout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<Navigate to="dashboard" replace />} />
+                  <Route path="dashboard" element={<OrganizerDashboard />} />
+                  <Route path="events" element={<EventManagement />} />
+                  <Route path="events/new" element={<CreateEvent />} />
+                  <Route path="events/edit/:id" element={<EditEvent />} />
+                  {/* <Route path="registrations" element={<RegistrationList />} /> */}
+                  <Route path="registrations" element={<ExportReports />} /> {/* Updated route to match Dashboard link */}
+                  <Route path="settings" element={<OrganizerSettings />} />
+                </Route>
+  
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </EventProvider>
+          </SocketProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
