@@ -43,7 +43,7 @@ const registerUser = asyncHandler(async (req, res) => {
     const user = await User.create({ name, email, password, role: role || 'user' });
 
     if (user) {
-        // Send welcome email (non-blocking — doesn't affect registration response)
+        // Send welcome email (non-blocking)
         setImmediate(async () => {
             try {
                 console.log(`🔍 [Auth] Registration success for ${user.email}, triggering welcome email...`);
