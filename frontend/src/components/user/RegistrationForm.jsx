@@ -93,7 +93,8 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                     email: user.email,
                 },
                 theme: {
-                    color: "#4f46e5"
+                    color: isDarkMode ? "#818cf8" : "#4f46e5",
+                    backdrop_color: isDarkMode ? "#111827" : "#ffffff"
                 },
                 modal: {
                     ondismiss: function () {

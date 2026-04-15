@@ -7,7 +7,8 @@ export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
     const [socket, setSocket] = useState(null);
-    const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    const SOCKET_URL = API_URL.replace(/\/api\/?$/, '') || window.location.origin;
 
     useEffect(() => {
         console.log('🔌 [SocketContext] Initializing connection to:', SOCKET_URL);
