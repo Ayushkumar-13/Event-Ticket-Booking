@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
-const Razorpay = require('razorpay');
+const axios = require('axios');
+const https = require('https');
 const crypto = require('crypto');
 const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
@@ -8,21 +9,59 @@ const { sendTicketEmail } = require('../utils/emailSender');
 const { invalidateEventCache } = require('../utils/cacheHelper');
 const { convertToINR } = require('../utils/currencyService');
 
-// Note: We initialize inside the handler or use a getter to ensure 
-// environment variables are loaded accurately.
-const getRazorpayInstance = () => {
+// ─────────────────────────────────────────────────────────────
+// PRODUCTION-GRADE RAZORPAY HTTP CLIENT
+// Bypasses the Razorpay Node SDK entirely to avoid its broken
+// normalizeError handling on network failures.
+// Mirrors what Stripe, Razorpay, and other payment gateways use
+// internally in their own production SDKs.
+// ─────────────────────────────────────────────────────────────
+const razorpayClient = axios.create({
+    baseURL: 'https://api.razorpay.com/v1',
+    timeout: 15000,
+    headers: { 'Content-Type': 'application/json' },
+    // Force IPv4 on the underlying TLS socket — identical to how we fixed MongoDB.
+    // Node 18+ defaults to IPv6 which causes ENOTFOUND for many Indian hosts.
+    httpsAgent: new https.Agent({ family: 4 })
+});
+
+/**
+ * Production-grade retry with exponential backoff.
+ * Standard practice at companies like Stripe/Shopify for
+ * idempotent API calls that may fail due to intermittent network issues.
+ * @param {Function} fn - Async function to retry
+ * @param {number} retries - Max retry attempts (default 3)
+ */
+const withRetry = async (fn, retries = 3) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            const isRetryable = !error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+            if (!isRetryable || attempt === retries) throw error;
+
+            const delay = Math.min(500 * Math.pow(2, attempt - 1), 4000); // 500ms → 1s → 2s → 4s cap
+            console.warn(`⚠️ [Razorpay] Attempt ${attempt} failed. Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+};
+
+const getRazorpayAuth = () => {
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
         throw new Error('Razorpay API keys are missing from environment variables');
     }
-    return new Razorpay({
-        key_id: process.env.RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET
-    });
+    return {
+        username: process.env.RAZORPAY_KEY_ID,
+        password: process.env.RAZORPAY_KEY_SECRET
+    };
 };
 
+// ─────────────────────────────────────────────────────────────
 // @desc    Create Razorpay Order
 // @route   POST /api/payments/order
 // @access  Private
+// ─────────────────────────────────────────────────────────────
 const createOrder = asyncHandler(async (req, res) => {
     const { eventId, quantity } = req.body;
 
@@ -42,52 +81,55 @@ const createOrder = asyncHandler(async (req, res) => {
         throw new Error('Not enough tickets available');
     }
 
-    // --- PRODUCTION-GRADE CURRENCY CONVERSION ---
-    // We list in the original currency but convert to INR for the transaction
-    // to ensure compatibility with your current account status.
-    const { amountINR, rate } = await convertToINR(event.price * quantity, event.currency);
-    
-    const amount = amountINR * 100; // Amount in paise
+    const { amountINR } = await convertToINR(event.price * quantity, event.currency || 'INR');
+    const amount = Math.round(amountINR) * 100; // Razorpay requires integer paise
     const currency = 'INR';
-
-    const options = {
-        amount,
-        currency,
-        receipt: `rcpt_${eventId.toString().slice(-6)}_${Date.now()}`, 
-    };
+    const receipt = `rcpt_${eventId.toString().slice(-6)}_${Date.now()}`.slice(0, 40);
 
     try {
-        const razorpay = getRazorpayInstance();
-        
-        console.log(`📦 [Razorpay] Creating order for amount: ${amount} ${currency}`);
-        
-        const order = await razorpay.orders.create(options);
-        
-        console.log(`✅ [Razorpay] Order created: ${order.id}`);
-        res.status(201).json({
+        console.log(`📦 [Razorpay] Creating order: amount=₹${amountINR} (${amount} paise), event="${event.title}"`);
+
+        const order = await withRetry(() =>
+            razorpayClient.post('/orders', { amount, currency, receipt }, {
+                auth: getRazorpayAuth()
+            }).then(r => r.data)
+        );
+
+        console.log(`✅ [Razorpay] Order created successfully: ${order.id}`);
+
+        return res.status(201).json({
             success: true,
             order_id: order.id,
             amount: order.amount,
             currency: order.currency,
             event: {
                 title: event.title,
-                price: event.price
+                price: event.price,
+                currency: event.currency || 'INR'
             }
         });
+
     } catch (error) {
-        console.error("Razorpay Order Error:", error);
-        // Ensure we send a proper JSON response instead of just throwing to avoid SDK normalization errors
-        return res.status(error.statusCode || 500).json({
+        const status = error.response?.status || 503;
+        const message = error.response?.data?.error?.description
+            || error.message
+            || 'Could not create payment order. Please try again.';
+
+        console.error(`❌ [Razorpay] Order creation failed after retries (HTTP ${status}):`, message);
+
+        return res.status(status).json({
             success: false,
-            message: error.description || 'Could not create Razorpay order',
-            error: error.error || error.message
+            message,
+            error: error.response?.data?.error || error.message
         });
     }
 });
 
-// @desc    Verify Razorpay Payment and Finalize Booking
+// ─────────────────────────────────────────────────────────────
+// @desc    Verify Razorpay Payment & Finalize Booking
 // @route   POST /api/payments/verify
 // @access  Private
+// ─────────────────────────────────────────────────────────────
 const verifyPayment = asyncHandler(async (req, res) => {
     const {
         razorpay_order_id,
@@ -97,57 +139,42 @@ const verifyPayment = asyncHandler(async (req, res) => {
         quantity
     } = req.body;
 
-    // 1. Verify Signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    
-    if (!process.env.RAZORPAY_KEY_SECRET) {
-        res.status(500);
-        throw new Error('Razorpay Secret Key is missing');
-    }
-
+    // 1. HMAC-SHA256 Signature Verification (prevents payment tampering)
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expectedSignature = crypto
         .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-        .update(body.toString())
+        .update(body)
         .digest('hex');
 
-    const isSignatureValid = expectedSignature === razorpay_signature;
-
-    if (!isSignatureValid) {
+    if (expectedSignature !== razorpay_signature) {
+        console.error(`🚨 [Security] Invalid payment signature for order ${razorpay_order_id}`);
         res.status(400);
-        throw new Error('Invalid payment signature. Payment might be tampered with.');
+        throw new Error('Invalid payment signature. This payment may have been tampered with.');
     }
 
-    // 2. Fetch event to get original price details
+    // 2. Fetch event for pricing audit
     const event = await Event.findById(eventId);
     if (!event) {
         res.status(404);
         throw new Error('Event not found');
     }
 
-    // 3. Re-calculate the actual INR amount paid and original amount for auditing
-    const { amountINR, rate } = await convertToINR(event.price * quantity, event.currency);
+    // 3. Calculate final amounts for audit trail
+    const { amountINR, rate } = await convertToINR(event.price * quantity, event.currency || 'INR');
 
-    // 4. Atomic Inventory Check & Update
+    // 4. Atomic Inventory Update (prevents overbooking under concurrent load)
     const updatedEvent = await Event.findOneAndUpdate(
-        {
-            _id: eventId,
-            availableTickets: { $gte: quantity }
-        },
-        {
-            $inc: {
-                availableTickets: -quantity,
-                soldTickets: quantity
-            }
-        },
+        { _id: eventId, availableTickets: { $gte: quantity } },
+        { $inc: { availableTickets: -quantity, soldTickets: quantity } },
         { new: true }
     );
 
     if (!updatedEvent) {
         res.status(409);
-        throw new Error('Tickets sold out before payment could be finalized.');
+        throw new Error('Tickets sold out before payment finalized. Please contact support for a refund.');
     }
 
-    // 5. Create Ticket with Full Audit Trail
+    // 5. Create Ticket with complete financial audit trail
     const ticket = await Ticket.create({
         user: req.user.id,
         event: eventId,
@@ -158,43 +185,34 @@ const verifyPayment = asyncHandler(async (req, res) => {
         signature: razorpay_signature,
         amount: amountINR,
         originalAmount: event.price * quantity,
-        originalCurrency: event.currency,
+        originalCurrency: event.currency || 'INR',
         exchangeRate: rate
     });
 
-    console.log(`✅ [Payment] Verified & Ticket ${ticket._id} created for user ${req.user.id}`);
+    console.log(`✅ [Payment] Verified. Ticket ${ticket._id} created for user ${req.user.id}`);
 
-    // 4. Background tasks
+    // 6. Async background tasks (non-blocking — keeps response fast)
     await invalidateEventCache();
 
-    // Broadcast realtime update
     try {
         const { getIO } = require('../socket');
-        const io = getIO();
-        io.emit('ticket_updated', {
-            eventId,
-            availableTickets: updatedEvent.availableTickets
-        });
-    } catch (err) {}
+        getIO().emit('ticket_updated', { eventId, availableTickets: updatedEvent.availableTickets });
+    } catch (_) {}
 
-    // Send Email
     setImmediate(async () => {
         try {
             const pdfBuffer = await generateTicketPDF(ticket, updatedEvent, req.user);
             await sendTicketEmail(req.user, updatedEvent, pdfBuffer);
         } catch (emailErr) {
-            console.error(`❌ [Email] Failed:`, emailErr.message);
+            console.error(`❌ [Email] PDF/Email delivery failed:`, emailErr.message);
         }
     });
 
-    res.status(200).json({
+    return res.status(200).json({
         success: true,
-        message: 'Payment verified and ticket booked',
+        message: 'Payment verified and ticket confirmed',
         ticketId: ticket._id
     });
 });
 
-module.exports = {
-    createOrder,
-    verifyPayment
-};
+module.exports = { createOrder, verifyPayment };
