@@ -196,7 +196,10 @@ const verifyPayment = asyncHandler(async (req, res) => {
 
     try {
         const { getIO } = require('../socket');
-        getIO().emit('ticket_updated', { eventId, availableTickets: updatedEvent.availableTickets });
+        getIO().emit('ticket_updated', { 
+            eventId: eventId.toString(), 
+            availableTickets: updatedEvent.availableTickets 
+        });
     } catch (_) {}
 
     setImmediate(async () => {
