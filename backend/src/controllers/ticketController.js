@@ -165,17 +165,29 @@ const getUserTickets = asyncHandler(async (req, res) => {
     res.status(200).json(tickets);
 });
 
-// @desc    Get user's booked event IDs (for UI state — e.g. hiding "Book" button)
+// @desc    Get user's booked event IDs with quantity (for UI state)
 // @route   GET /api/tickets/booked-events
 // @access  Private
 const getBookedEventIds = asyncHandler(async (req, res) => {
     const tickets = await Ticket.find({
         user: req.user.id,
         status: 'Confirmed'
-    }).select('event');
+    }).select('event quantity');
 
-    const eventIds = tickets.map(ticket => ticket.event.toString());
-    res.status(200).json(eventIds);
+    // Aggregate total tickets per event (user may have booked multiple times)
+    const bookingMap = {};
+    tickets.forEach(ticket => {
+        const eventId = ticket.event.toString();
+        bookingMap[eventId] = (bookingMap[eventId] || 0) + ticket.quantity;
+    });
+
+    // Return array of { eventId, quantity } objects
+    const bookingSummary = Object.entries(bookingMap).map(([eventId, quantity]) => ({
+        eventId,
+        quantity
+    }));
+
+    res.status(200).json(bookingSummary);
 });
 
 // @desc    Get all tickets for events owned by the organizer
