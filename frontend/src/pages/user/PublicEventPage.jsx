@@ -26,7 +26,7 @@ const PublicEventPage = () => {
     const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('All');
-    const [bookedEventIds, setBookedEventIds] = useState([]);
+    const [bookedEventIds, setBookedEventIds] = useState({});
     const [showSubtitle, setShowSubtitle] = useState(false);
     const [resetAnimation, setResetAnimation] = useState(false);
     const [animationComplete, setAnimationComplete] = useState(false);
@@ -170,7 +170,7 @@ const PublicEventPage = () => {
                                     className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.333rem)] flex"
                                 >
                                     <div className="w-full">
-                                        <EventCard event={event} isBooked={bookedEventIds.includes(event._id)} index={index} />
+                                        <EventCard event={event} isBooked={event._id in bookedEventIds} index={index} />
                                     </div>
                                 </div>
                             ))}
