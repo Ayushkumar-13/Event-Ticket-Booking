@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../../utils/currencyFormatter';
 
-const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
+const RegistrationForm = ({ event, bookedQuantity = 0, onSuccess }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
 
@@ -82,7 +82,7 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                             quantity
                         });
                         setStatus('success');
-                        if (onSuccess) onSuccess();
+                        if (onSuccess) onSuccess(quantity);
                     } catch (verifyErr) {
                         setError(verifyErr.message || 'Payment verification failed.');
                         setStatus('error');
@@ -120,9 +120,17 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                 </div>
                 <h4 className="text-lg font-bold text-green-700 dark:text-green-400 mb-2">Booking Confirmed!</h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">You have successfully booked {quantity} ticket(s).</p>
-                <Button onClick={() => navigate('/dashboard')} className="w-full">
-                    View My Tickets
-                </Button>
+                <div className="space-y-3">
+                    <Button onClick={() => navigate('/dashboard')} className="w-full">
+                        View My Tickets
+                    </Button>
+                    <button
+                        onClick={() => setStatus('idle')}
+                        className="w-full py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 border border-indigo-200 dark:border-indigo-700 rounded-lg transition-colors duration-200"
+                    >
+                        + Book More Tickets
+                    </button>
+                </div>
             </div>
         );
     }
@@ -130,6 +138,14 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 sticky top-24 shadow-sm transition-colors duration-200">
             <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Get Tickets</h3>
+
+            {/* Existing booking badge */}
+            {bookedQuantity > 0 && (
+                <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 text-sm rounded-lg px-3 py-2 mb-4">
+                    <CheckCircle size={15} className="shrink-0" />
+                    <span>You already have <strong>{bookedQuantity}</strong> ticket{bookedQuantity > 1 ? 's' : ''} for this event. Need more?</span>
+                </div>
+            )}
 
             <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -139,7 +155,7 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                     value={quantity}
                     onChange={(e) => setQuantity(Number(e.target.value))}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors duration-200"
-                    disabled={status === 'processing' || isBooked}
+                disabled={status === 'processing'}
                 >
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
                         <option key={num} value={num}>{num}</option>
@@ -166,28 +182,13 @@ const RegistrationForm = ({ event, isBooked = false, onSuccess }) => {
                 </div>
             )}
 
-            {isBooked ? (
-                <div className="space-y-3">
-                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg text-center">
-                        <p className="text-green-700 dark:text-green-400 text-sm font-medium">You have already booked a ticket for this event</p>
-                    </div>
-                    <button
-                        disabled
-                        className="w-full py-3 text-lg bg-green-500 dark:bg-green-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 cursor-not-allowed shadow-md"
-                    >
-                        <CheckCircle size={20} />
-                        Booked
-                    </button>
-                </div>
-            ) : (
-                <Button
-                    onClick={handleBookTicket}
-                    isLoading={status === 'processing'}
-                    className="w-full py-3 text-lg shadow-lg hover:shadow-xl transform transition-all hover:-translate-y-1"
-                >
-                    {user ? 'Book Now' : 'Login to Book'}
-                </Button>
-            )}
+            <Button
+                onClick={handleBookTicket}
+                isLoading={status === 'processing'}
+                className="w-full py-3 text-lg shadow-lg hover:shadow-xl transform transition-all hover:-translate-y-1"
+            >
+                {user ? 'Book Now' : 'Login to Book'}
+            </Button>
 
             <p className="mt-4 text-xs text-center text-gray-500 dark:text-gray-400">
                 100% Secure Checkout

@@ -15,7 +15,7 @@ const EventDetails = () => {
 
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isBooked, setIsBooked] = useState(false);
+    const [bookedQuantity, setBookedQuantity] = useState(0);
 
     useEffect(() => {
         const fetchEvent = async () => {
@@ -33,13 +33,14 @@ const EventDetails = () => {
         fetchEvent();
     }, [id, navigate]);
 
-    // Check if user has already booked this event
+    // Check how many tickets the user already owns for this event
     useEffect(() => {
         const checkBookingStatus = async () => {
             if (user && id) {
                 try {
-                    const bookedIds = await getBookedEventIds();
-                    setIsBooked(bookedIds.includes(id));
+                    const bookingMap = await getBookedEventIds();
+                    // bookingMap is { eventId -> quantity }
+                    setBookedQuantity(bookingMap[id] || 0);
                 } catch (error) {
                     console.error("Failed to check booking status:", error);
                 }
@@ -98,7 +99,7 @@ const EventDetails = () => {
                     </div>
 
                     <div className="lg:col-span-1">
-                        <RegistrationForm event={event} isBooked={isBooked} />
+                        <RegistrationForm event={event} bookedQuantity={bookedQuantity} onSuccess={(qty) => setBookedQuantity(q => q + qty)} />
                     </div>
                 </div>
             </div>

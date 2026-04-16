@@ -44,10 +44,15 @@ export const getBookedEventIds = async () => {
     try {
         const response = await api.get('/tickets/booked-events');
         console.log("📡 registrationService: Booked event IDs:", response.data);
-        return response.data;
+        // Response is now: [{ eventId, quantity }, ...]
+        // Return as a Map: { eventId -> quantity }
+        const bookingMap = {};
+        (response.data || []).forEach(({ eventId, quantity }) => {
+            bookingMap[eventId] = quantity;
+        });
+        return bookingMap;
     } catch (error) {
         console.error("📡 registrationService: Error fetching booked events:", error);
-        // Return empty array for booked events - this is acceptable as it just means no bookings
-        return [];
+        return {};
     }
 }
